@@ -24,6 +24,11 @@ struct Cli {
 
 #[derive(Subcommand)]
 enum Commands {
+    /// Serve read-only MCP tools for a tape over stdio.
+    Mcp {
+        #[arg(long)]
+        tape: PathBuf,
+    },
     /// Record an interactive shell or command inside a zero-stall DTP v0.1 PTY session.
     Record {
         /// Output .tape archive path.
@@ -38,6 +43,9 @@ enum Commands {
         /// Maximum in-memory channel buffer in bytes before QoS-0 drops excess bursts.
         #[arg(long, default_value_t = devtape_pty::DEFAULT_MAX_BUFFER_BYTES)]
         max_buffer_bytes: usize,
+        /// Capture HTTP exchanges using a child-only loopback proxy.
+        #[arg(long)]
+        net: bool,
         /// Command and arguments to execute inside the PTY (defaults to $SHELL).
         #[arg(trailing_var_arg = true)]
         cmd: Vec<String>,
@@ -127,15 +135,29 @@ fn open_store(
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let cli = Cli::parse();
     match cli.command {
+        Commands::Mcp { tape } => {
+            let archive = TapeArchive::decode(&fs::read(tape)?)?;
+            devtape_mcp::serve(&archive, io::stdin().lock(), io::stdout().lock())?;
+        }
         Commands::Record {
             out,
             db,
             qos,
             max_buffer_bytes,
+            net,
             cmd,
         } => {
             let qos_mode = parse_qos_mode(&qos)?;
+            let proxy = if net {
+                Some(devtape_net::Proxy::start().await?)
+            } else {
+                None
+            };
             let config = RecordConfig {
+                extra_env: proxy
+                    .as_ref()
+                    .map(|p| p.child_env_vars())
+                    .unwrap_or_default(),
                 command: cmd,
                 interactive_stdin: std::io::IsTerminal::is_terminal(&std::io::stdin()),
                 qos_mode,
@@ -143,6 +165,46 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 ..RecordConfig::default()
             };
             let mut outcome = PtyRecorder::record(config).await?;
+            if let Some(proxy) = proxy {
+                let captured = proxy.shutdown().await?;
+                let mut events = outcome.archive.events;
+                let mut end = events.pop().ok_or("missing session end")?;
+                let root = events.first().ok_or("missing session start")?;
+                let span_id = root.span_id.clone();
+                let parent_span_id = root.parent_span_id.clone();
+                for capture in captured.events {
+                    events.push(EventEnvelope {
+                        seq: 0,
+                        hlc: capture.hlc,
+                        span_id: span_id.clone(),
+                        parent_span_id: parent_span_id.clone(),
+                        event: capture.event,
+                    });
+                }
+                // Keep lifecycle start first; order concurrent observations by their clocks.
+                events[2..].sort_by_key(|e| e.hlc);
+                let mut clock = events[0].hlc;
+                for (index, event) in events.iter_mut().enumerate() {
+                    event.seq = index as u64 + 1;
+                    if index > 0 {
+                        clock.merge(event.hlc, event.hlc.physical_ms);
+                        event.hlc = clock;
+                    }
+                }
+                end.seq = events.len() as u64 + 1;
+                end.hlc = clock.merge(end.hlc, end.hlc.physical_ms);
+                if let CoreEvent::SessionEnd { total_events, .. } = &mut end.event {
+                    *total_events = end.seq;
+                }
+                events.push(end);
+                outcome
+                    .archive
+                    .manifest
+                    .extensions
+                    .push("ext.http.v1".into());
+                outcome.archive.manifest.redaction.redacted_count += captured.redacted_count;
+                outcome.archive = TapeArchive::new(outcome.archive.manifest, events)?;
+            }
             let cwd = std::env::current_dir()?;
             let is_repo = std::process::Command::new("git")
                 .arg("-C")

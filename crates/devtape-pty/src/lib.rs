@@ -60,6 +60,8 @@ pub struct RecordConfig {
     pub export_profile: ExportProfile,
     /// Maximum queued bytes in the hot-to-cold channel before QoS-0 drops bursts.
     pub max_buffer_bytes: usize,
+    /// Environment additions for the child PTY only.
+    pub extra_env: Vec<(String, String)>,
     /// Initial terminal rows.
     pub rows: u16,
     /// Initial terminal columns.
@@ -82,6 +84,7 @@ impl Default for RecordConfig {
             qos_mode: QosMode::ZeroStall,
             export_profile: ExportProfile::Full,
             max_buffer_bytes: DEFAULT_MAX_BUFFER_BYTES,
+            extra_env: Vec::new(),
             rows: 24,
             cols: 80,
             passthrough_stdout: true,
@@ -502,6 +505,9 @@ impl PtyRecorder {
         cmd_builder.cwd(&working_dir);
         cmd_builder.env("DTP_SPAN_ID", &root_span_id);
         cmd_builder.env("DTP_SESSION_ID", &session_id);
+        for (key, value) in &config.extra_env {
+            cmd_builder.env(key, value);
+        }
 
         let mut child = pair
             .slave

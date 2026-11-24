@@ -7,6 +7,8 @@ members = [
     "crates/devtape-git",
     "crates/devtape-core",
     "crates/devtape-cli",
+    "crates/devtape-mcp",
+    "crates/devtape-net",
 ]
 
 [workspace.package]
@@ -24,7 +26,7 @@ rusqlite = { version = "0.32", features = ["bundled"] }
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
 thiserror = "2.0"
-tokio = { version = "1.40", features = ["rt-multi-thread", "sync", "macros", "time", "io-util"] }
+tokio = { version = "1.40", features = ["rt-multi-thread", "sync", "macros", "time", "io-util", "net"] }
 zstd = "0.13"
 
 [profile.release]
