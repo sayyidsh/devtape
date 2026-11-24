@@ -110,11 +110,26 @@ fn text(bytes: Vec<u8>) -> Result<String, GitError> {
         .map(|s| s.trim_end_matches(['\r', '\n']).to_owned())
         .map_err(|_| GitError::Unsafe("non-UTF-8 Git output".into()))
 }
+fn normalize_canonical(p: PathBuf) -> PathBuf {
+    #[cfg(windows)]
+    if let Some(s) = p.to_str().and_then(|s| s.strip_prefix(r"\\?\")) {
+        return PathBuf::from(s);
+    }
+    p
+}
 fn resolve(repo: &Path) -> Result<Repo, GitError> {
-    let root = fs::canonicalize(text(git(repo, &["rev-parse", "--show-toplevel"], None)?)?)?;
+    let root = normalize_canonical(fs::canonicalize(text(git(
+        repo,
+        &["rev-parse", "--show-toplevel"],
+        None,
+    )?)?)?);
     let raw = text(git(&root, &["rev-parse", "--git-dir"], None)?)?;
     let p = PathBuf::from(raw);
-    let git_dir = fs::canonicalize(if p.is_absolute() { p } else { root.join(p) })?;
+    let git_dir = normalize_canonical(fs::canonicalize(if p.is_absolute() {
+        p
+    } else {
+        root.join(p)
+    })?);
     let dir = git_dir.join("devtape");
     fs::create_dir_all(dir.join("snapshots"))?;
     fs::create_dir_all(dir.join("cas"))?;
