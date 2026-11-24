@@ -1,0 +1,18 @@
+[package]
+name = "devtape-pty"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+blake3.workspace = true
+devtape-scrub = { path = "../devtape-scrub" }
+dtp-codec = { path = "../dtp-codec" }
+portable-pty.workspace = true
+thiserror.workspace = true
+tokio.workspace = true
+serde_json.workspace = true
+
+[target.'cfg(unix)'.dependencies]
+termios = "0.2"
+filedescriptor = "0.8"

@@ -1,0 +1,6 @@
+/.*.tape
+/*.tape
+!/spec/conformance/*.tape
+/target
+.DS_Store
+._*

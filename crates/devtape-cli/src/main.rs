@@ -1,4 +1,7 @@
+#![forbid(unsafe_code)]
+
 use clap::{Parser, Subcommand};
+use devtape_pty::{PtyRecorder, RecordConfig};
 use devtape_scrub::{OverlapScrubber, RULESET_VERSION};
 use dtp_codec::{
     CoreEvent, EventEnvelope, ExportProfile, HlcTimestamp, QosMode, RedactionAttestation,
@@ -21,22 +24,75 @@ struct Cli {
 
 #[derive(Subcommand)]
 enum Commands {
+    /// Record an interactive shell or command inside a zero-stall DTP v0.1 PTY session.
+    Record {
+        /// Output .tape archive path.
+        #[arg(short, long, default_value = "session.tape")]
+        out: PathBuf,
+        /// QoS mode: zero-stall (QoS-0) or lossless (QoS-1).
+        #[arg(long, default_value = "zero-stall")]
+        qos: String,
+        /// Maximum in-memory channel buffer in bytes before QoS-0 drops excess bursts.
+        #[arg(long, default_value_t = devtape_pty::DEFAULT_MAX_BUFFER_BYTES)]
+        max_buffer_bytes: usize,
+        /// Command and arguments to execute inside the PTY (defaults to $SHELL).
+        #[arg(trailing_var_arg = true)]
+        cmd: Vec<String>,
+    },
     /// Generate a valid sample DTP v0.1 .tape archive to test the codec pipeline.
     DemoTape {
         #[arg(long, default_value = "sample.tape")]
         out: PathBuf,
     },
     /// Inspect a .tape file's manifest, redaction attestation, and event timeline.
-    Inspect {
-        path: PathBuf,
-    },
+    Inspect { path: PathBuf },
+    /// Check the local recording environment.
+    Doctor,
     /// Read stdin through the sliding-window secret scrubber and print the sanitized output.
     ScrubCheck,
 }
 
-fn main() -> Result<(), Box<dyn std::error::Error>> {
+fn parse_qos_mode(raw: &str) -> Result<QosMode, String> {
+    match raw.trim().to_ascii_lowercase().as_str() {
+        "zero-stall" | "zerostall" | "qos0" | "qos-0" => Ok(QosMode::ZeroStall),
+        "lossless" | "qos1" | "qos-1" => Ok(QosMode::Lossless),
+        other => Err(format!(
+            "unsupported --qos mode '{other}' (expected 'zero-stall' or 'lossless')"
+        )),
+    }
+}
+
+#[tokio::main]
+async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let cli = Cli::parse();
     match cli.command {
+        Commands::Record {
+            out,
+            qos,
+            max_buffer_bytes,
+            cmd,
+        } => {
+            let qos_mode = parse_qos_mode(&qos)?;
+            let config = RecordConfig {
+                command: cmd,
+                interactive_stdin: std::io::IsTerminal::is_terminal(&std::io::stdin()),
+                qos_mode,
+                max_buffer_bytes,
+                ..RecordConfig::default()
+            };
+            let outcome = PtyRecorder::record(config).await?;
+            let encoded = outcome.archive.encode()?;
+            fs::write(&out, &encoded)?;
+            eprintln!(
+                "[devtape] recorded {} events to {} ({} bytes compressed, {} secrets scrubbed, {} bytes dropped, exit_code={})",
+                outcome.archive.events.len(),
+                out.display(),
+                encoded.len(),
+                outcome.archive.manifest.redaction.redacted_count,
+                outcome.bytes_dropped,
+                outcome.exit_code
+            );
+        }
         Commands::DemoTape { out } => {
             let mut scrubber = OverlapScrubber::new();
             let raw_output = "Running tests with token=sk-proj-secretvalue12345678901234\n";
@@ -109,8 +165,80 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         }
         Commands::Inspect { path } => {
             let bytes = fs::read(&path)?;
-            let archive = TapeArchive::decode(&bytes)?;
+            let mut archive = TapeArchive::decode(&bytes)?;
+            let mut sanitizer = dtp_codec::AnsiReplaySanitizer::new();
+            let mut last_chunk = None;
+            for (index, envelope) in archive.events.iter_mut().enumerate() {
+                match &mut envelope.event {
+                    CoreEvent::StreamChunk { data, .. } => {
+                        *data = sanitizer.push_chunk(data);
+                        last_chunk = Some(index);
+                    }
+                    CoreEvent::SpanStart { label, .. } => {
+                        *label = dtp_codec::sanitize_ansi_for_replay(label)
+                    }
+                    _ => {}
+                }
+            }
+            if let Some(index) = last_chunk {
+                if let CoreEvent::StreamChunk { data, .. } = &mut archive.events[index].event {
+                    data.push_str(&sanitizer.finish());
+                }
+            }
             println!("{}", serde_json::to_string_pretty(&archive)?);
+        }
+        Commands::Doctor => {
+            let git = std::process::Command::new("git")
+                .arg("--version")
+                .output()?;
+            if !git.status.success() {
+                return Err("git --version failed".into());
+            }
+            let pty = devtape_pty::probe_pty_support()?;
+            let path = std::env::current_dir()?.join(format!(
+                ".devtape-doctor-{}-{}",
+                std::process::id(),
+                std::time::SystemTime::now()
+                    .duration_since(std::time::UNIX_EPOCH)?
+                    .as_nanos()
+            ));
+            let file = std::fs::OpenOptions::new()
+                .write(true)
+                .create_new(true)
+                .open(&path)?;
+            drop(file);
+            std::fs::remove_file(path)?;
+            let mut scrubber = OverlapScrubber::new();
+            let mut cleaned = scrubber.push_chunk("sk-proj-1234567890abcdefghijklmno");
+            cleaned.push_str(&scrubber.finish());
+            if !cleaned.contains("<DTP:REDACTED:API_KEY:") || scrubber.redacted_count() != 1 {
+                return Err("scrubber self-check failed".into());
+            }
+            let manifest = TapeManifest {
+                spec_version: "0.1.0".into(),
+                session_id: "doctor".into(),
+                os: std::env::consts::OS.into(),
+                arch: std::env::consts::ARCH.into(),
+                shell: "doctor".into(),
+                qos_mode: QosMode::ZeroStall,
+                export_profile: ExportProfile::Full,
+                extensions: vec![],
+                redaction: RedactionAttestation {
+                    ruleset_version: RULESET_VERSION.into(),
+                    redacted_count: scrubber.redacted_count(),
+                    local_map_excluded: true,
+                },
+            };
+            let archive = TapeArchive::new(manifest, vec![])?;
+            if TapeArchive::decode(&archive.encode()?)? != archive {
+                return Err("codec self-check failed".into());
+            }
+            println!(
+                "{}",
+                serde_json::to_string_pretty(
+                    &serde_json::json!({"git": String::from_utf8_lossy(&git.stdout).trim(), "pty": pty, "term": std::env::var("TERM").ok(), "shell": std::env::var("SHELL").ok(), "cwd_write": "ok", "scrubber": RULESET_VERSION, "codec_roundtrip": "ok"})
+                )?
+            );
         }
         Commands::ScrubCheck => {
             let mut input = String::new();

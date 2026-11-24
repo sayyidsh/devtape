@@ -1,3 +1,5 @@
+#![forbid(unsafe_code)]
+
 //! Core DTP v0.1 codec: Hybrid Logical Clocks, Event Envelopes, and `.tape` container I/O.
 
 use serde::{Deserialize, Serialize};
@@ -178,6 +180,69 @@ pub struct TapeArchive {
     pub integrity_blake3: String,
 }
 
+/// Stateful filter for clipboard and window-title OSC commands.
+#[derive(Default)]
+pub struct AnsiReplaySanitizer {
+    prefix: String,
+    suppressing: bool,
+    escape_in_payload: bool,
+}
+
+impl AnsiReplaySanitizer {
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    pub fn push_chunk(&mut self, chunk: &str) -> String {
+        const HEADERS: [&str; 4] = ["\x1b]52;", "\x1b]0;", "\x1b]1;", "\x1b]2;"];
+        let mut out = String::new();
+        for c in chunk.chars() {
+            if self.suppressing {
+                if c == '\x07' || (self.escape_in_payload && c == '\\') {
+                    self.suppressing = false;
+                    self.escape_in_payload = false;
+                } else {
+                    self.escape_in_payload = c == '\x1b';
+                }
+                continue;
+            }
+            self.prefix.push(c);
+            loop {
+                if HEADERS.contains(&self.prefix.as_str()) {
+                    self.prefix.clear();
+                    self.suppressing = true;
+                    break;
+                }
+                if HEADERS.iter().any(|h| h.starts_with(&self.prefix)) {
+                    break;
+                }
+                let first = self.prefix.chars().next().unwrap();
+                out.push(first);
+                self.prefix.drain(..first.len_utf8());
+                if self.prefix.is_empty() {
+                    break;
+                }
+            }
+        }
+        out
+    }
+
+    /// Flushes an incomplete harmless prefix; an incomplete targeted OSC is discarded.
+    pub fn finish(&mut self) -> String {
+        self.suppressing = false;
+        self.escape_in_payload = false;
+        std::mem::take(&mut self.prefix)
+    }
+}
+
+/// Removes clipboard and window-title OSC commands from terminal replay.
+pub fn sanitize_ansi_for_replay(input: &str) -> String {
+    let mut sanitizer = AnsiReplaySanitizer::new();
+    let mut output = sanitizer.push_chunk(input);
+    output.push_str(&sanitizer.finish());
+    output
+}
+
 /// Validates that a relative path inside a snapshot cannot escape the repository root.
 pub fn validate_safe_relative_path(path: &str) -> Result<(), CodecError> {
     if path.is_empty()
@@ -311,6 +376,30 @@ mod tests {
                 local_map_excluded: true,
             },
         }
+    }
+
+    #[test]
+    fn replay_sanitizer_removes_targeted_osc_and_preserves_sgr() {
+        let input = "é\x1b[31mred\x1b[0m\x1b]52;c;secret\x07A\x1b]0;title\x1b\\B\x1b]1;title\x07C\x1b]2;title\x1b\\D\x1b]52;unfinished";
+        assert_eq!(sanitize_ansi_for_replay(input), "é\x1b[31mred\x1b[0mABCD");
+    }
+
+    #[test]
+    fn replay_sanitizer_handles_split_sequences() {
+        let mut s = AnsiReplaySanitizer::new();
+        let mut out = String::new();
+        for part in [
+            "é\x1b[31m",
+            "红\x1b",
+            "]5",
+            "2;payload\x1b",
+            "\\",
+            "\x1b[0m",
+        ] {
+            out.push_str(&s.push_chunk(part));
+        }
+        out.push_str(&s.finish());
+        assert_eq!(out, "é\x1b[31m红\x1b[0m");
     }
 
     #[test]

@@ -10,3 +10,7 @@ serde.workspace = true
 serde_json.workspace = true
 thiserror.workspace = true
 zstd.workspace = true
+
+[[bench]]
+name = "codec_bench"
+harness = false

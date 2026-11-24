@@ -1,0 +1,82 @@
+[
+  {
+    "description": "minimal_session",
+    "expected": "valid",
+    "filename": "01_minimal_session.tape"
+  },
+  {
+    "description": "command_span_stdout",
+    "expected": "valid",
+    "filename": "02_command_span_stdout.tape"
+  },
+  {
+    "description": "multichannel_stdio",
+    "expected": "valid",
+    "filename": "03_multichannel_stdio.tape"
+  },
+  {
+    "description": "split_chunk_redacted_secrets",
+    "expected": "valid",
+    "filename": "04_split_chunk_redacted_secrets.tape"
+  },
+  {
+    "description": "qos0_drop_marker",
+    "expected": "valid",
+    "filename": "05_qos0_drop_marker.tape"
+  },
+  {
+    "description": "state_snapshot_safe_paths",
+    "expected": "valid",
+    "filename": "06_state_snapshot_safe_paths.tape"
+  },
+  {
+    "description": "hlc_causal_dag_nested_spans",
+    "expected": "valid",
+    "filename": "07_hlc_causal_dag_nested_spans.tape"
+  },
+  {
+    "description": "unknown_future_extension_v99",
+    "expected": "valid",
+    "filename": "08_unknown_future_extension_v99.tape"
+  },
+  {
+    "description": "export_profile_diff_only",
+    "expected": "valid",
+    "filename": "09_export_profile_diff_only.tape"
+  },
+  {
+    "description": "export_profile_trace_only",
+    "expected": "valid",
+    "filename": "10_export_profile_trace_only.tape"
+  },
+  {
+    "description": "invalid magic",
+    "expected": "InvalidMagic",
+    "filename": "11_invalid_magic_header.tape"
+  },
+  {
+    "description": "unsupported version",
+    "expected": "UnsupportedVersion(99)",
+    "filename": "12_unsupported_version_99.tape"
+  },
+  {
+    "description": "declared size exceeds limit",
+    "expected": "DecompressionLimitExceeded",
+    "filename": "13_decompression_bomb_declared_header.tape"
+  },
+  {
+    "description": "compressed zeros exceed ratio",
+    "expected": "DecompressionLimitExceeded",
+    "filename": "14_decompression_bomb_zstd_stream.tape"
+  },
+  {
+    "description": "path traversal",
+    "expected": "UnsafePath",
+    "filename": "15_path_traversal_dotdot.tape"
+  },
+  {
+    "description": "integrity tampering",
+    "expected": "IntegrityMismatch",
+    "filename": "16_tampered_integrity_blake3.tape"
+  }
+]
