@@ -188,12 +188,25 @@ name = "devtape-cli"
 version = "0.1.0"
 dependencies = [
  "clap",
+ "devtape-git",
  "devtape-pty",
  "devtape-scrub",
  "dtp-codec",
  "portable-pty",
  "serde_json",
  "tokio",
+]
+
+[[package]]
+name = "devtape-git"
+version = "0.1.0"
+dependencies = [
+ "blake3",
+ "dtp-codec",
+ "serde",
+ "serde_json",
+ "thiserror 2.0.21",
+ "zstd",
 ]
 
 [[package]]

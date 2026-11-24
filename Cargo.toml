@@ -4,6 +4,7 @@ members = [
     "crates/dtp-codec",
     "crates/devtape-scrub",
     "crates/devtape-pty",
+    "crates/devtape-git",
     "crates/devtape-cli",
 ]
 

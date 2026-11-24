@@ -11,6 +11,7 @@ path = "src/main.rs"
 [dependencies]
 clap.workspace = true
 devtape-pty = { path = "../devtape-pty" }
+devtape-git = { path = "../devtape-git" }
 devtape-scrub = { path = "../devtape-scrub" }
 dtp-codec = { path = "../dtp-codec" }
 serde_json.workspace = true

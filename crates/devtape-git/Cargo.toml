@@ -1,0 +1,13 @@
+[package]
+name = "devtape-git"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+blake3.workspace = true
+dtp-codec = { path = "../dtp-codec" }
+serde.workspace = true
+serde_json.workspace = true
+thiserror.workspace = true
+zstd.workspace = true

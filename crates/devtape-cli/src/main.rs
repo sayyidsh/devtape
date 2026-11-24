@@ -39,6 +39,25 @@ enum Commands {
         #[arg(trailing_var_arg = true)]
         cmd: Vec<String>,
     },
+    /// Capture the current Git working tree using a private index.
+    Snapshot {
+        #[arg(long, default_value = ".")]
+        repo: PathBuf,
+        #[arg(long)]
+        label: Option<String>,
+    },
+    /// Restore a snapshot after making a safety snapshot.
+    Rewind {
+        #[arg(long, default_value = ".")]
+        repo: PathBuf,
+        #[arg(long)]
+        to: Option<String>,
+    },
+    /// Restore the most recent pre-rewind snapshot.
+    UndoRewind {
+        #[arg(long, default_value = ".")]
+        repo: PathBuf,
+    },
     /// Generate a valid sample DTP v0.1 .tape archive to test the codec pipeline.
     DemoTape {
         #[arg(long, default_value = "sample.tape")]
@@ -80,7 +99,65 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 max_buffer_bytes,
                 ..RecordConfig::default()
             };
-            let outcome = PtyRecorder::record(config).await?;
+            let mut outcome = PtyRecorder::record(config).await?;
+            let cwd = std::env::current_dir()?;
+            let is_repo = std::process::Command::new("git")
+                .arg("-C")
+                .arg(&cwd)
+                .args(["rev-parse", "--show-toplevel"])
+                .output()
+                .map(|o| o.status.success())
+                .unwrap_or(false);
+            if is_repo {
+                match devtape_git::GitSnapshotEngine::create_snapshot(&cwd, Some("record")) {
+                    Ok(mut snapshot) => {
+                        let mut path_scrubber = devtape_scrub::Scrubber::new();
+                        snapshot.changed_files = snapshot
+                            .changed_files
+                            .into_iter()
+                            .map(|p| path_scrubber.scrub_str(&p))
+                            .collect();
+                        outcome.archive.manifest.redaction.redacted_count +=
+                            path_scrubber.redacted_count();
+                        let mut events = outcome.archive.events;
+                        let mut end = events.pop().ok_or("missing session end")?;
+                        let previous = events.last().ok_or("missing session events")?;
+                        let mut clock = previous.hlc;
+                        let span_id = previous.span_id.clone();
+                        let parent_span_id = previous.parent_span_id.clone();
+                        for event in [
+                            snapshot.to_state_snapshot_event(),
+                            snapshot.to_extension_event(),
+                        ] {
+                            let seq = events.len() as u64 + 1;
+                            let wall = clock.physical_ms;
+                            events.push(EventEnvelope {
+                                seq,
+                                hlc: clock.tick(wall),
+                                span_id: span_id.clone(),
+                                parent_span_id: parent_span_id.clone(),
+                                event,
+                            });
+                        }
+                        end.seq = events.len() as u64 + 1;
+                        let wall = clock.physical_ms;
+                        end.hlc = clock.tick(wall);
+                        if let CoreEvent::SessionEnd { total_events, .. } = &mut end.event {
+                            *total_events = end.seq;
+                        }
+                        events.push(end);
+                        outcome
+                            .archive
+                            .manifest
+                            .extensions
+                            .push("ext.git.v1".into());
+                        outcome.archive = TapeArchive::new(outcome.archive.manifest, events)?;
+                    }
+                    Err(e) => {
+                        eprintln!("[devtape] warning: skipping ext.git.v1 snapshot: {e}");
+                    }
+                }
+            }
             let encoded = outcome.archive.encode()?;
             fs::write(&out, &encoded)?;
             eprintln!(
@@ -93,6 +170,24 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 outcome.exit_code
             );
         }
+        Commands::Snapshot { repo, label } => println!(
+            "{}",
+            serde_json::to_string_pretty(&devtape_git::GitSnapshotEngine::create_snapshot(
+                &repo,
+                label.as_deref()
+            )?)?
+        ),
+        Commands::Rewind { repo, to } => println!(
+            "{}",
+            serde_json::to_string_pretty(&devtape_git::GitSnapshotEngine::rewind(
+                &repo,
+                to.as_deref()
+            )?)?
+        ),
+        Commands::UndoRewind { repo } => println!(
+            "{}",
+            serde_json::to_string_pretty(&devtape_git::GitSnapshotEngine::undo_rewind(&repo)?)?
+        ),
         Commands::DemoTape { out } => {
             let mut scrubber = OverlapScrubber::new();
             let raw_output = "Running tests with token=sk-proj-secretvalue12345678901234\n";
