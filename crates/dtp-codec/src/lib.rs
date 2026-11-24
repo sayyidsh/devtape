@@ -307,7 +307,9 @@ impl TapeArchive {
         if version != TAPE_FORMAT_VERSION {
             return Err(CodecError::UnsupportedVersion(version));
         }
-        let declared_len = u64::from_be_bytes(bytes[8..16].try_into().unwrap()) as usize;
+        // Check before converting to usize: a malicious u64 header must not wrap
+        // on wasm32 (or other 32-bit targets) and bypass the size guard.
+        let declared_len = u64::from_be_bytes(bytes[8..16].try_into().unwrap());
         let compressed = &bytes[16..];
 
         let ratio_limit = compressed
@@ -316,9 +318,9 @@ impl TapeArchive {
             .max(4096);
         let hard_limit = max_uncompressed.min(ratio_limit);
 
-        if declared_len > hard_limit {
+        if declared_len > hard_limit as u64 {
             return Err(CodecError::DecompressionLimitExceeded {
-                declared: declared_len,
+                declared: usize::try_from(declared_len).unwrap_or(usize::MAX),
                 limit: hard_limit,
             });
         }

@@ -1,13 +1,13 @@
 # DevTape & DTP v0.1
 
 [![CI](https://github.com/sayyidsh/devtape/actions/workflows/ci.yml/badge.svg)](https://github.com/sayyidsh/devtape/actions/workflows/ci.yml)
-[![Release](https://img.shields.io/github/v/release/sayyidsh/devtape)](https://github.com/sayyidsh/devtape/releases/tag/v0.1.0)
+[![Release](https://img.shields.io/github/v/release/sayyidsh/devtape)](https://github.com/sayyidsh/devtape/releases/tag/v0.2.0)
 [![Live Viewer](https://img.shields.io/badge/Live_Viewer-GitHub_Pages-7dd9c8)](https://sayyidsh.github.io/devtape/)
 [![License: Apache-2.0](https://img.shields.io/badge/License-Apache_2.0-blue.svg)](LICENSE)
 
 **DevTape** is the reference Rust implementation of the **DevTape Protocol (DTP v0.1)** — an open, local-first protocol for recording, scrubbing, rewinding, and inspecting developer and AI-agent execution sessions in a single portable `.tape` archive (`spec/RFC-0001-dtp-v0.1.md` & `spec/dtp_v1.proto`).
 
-- **Try the Zero-Install Timeline Viewer:** **[https://sayyidsh.github.io/devtape/](https://sayyidsh.github.io/devtape/)** *(click **"Load Sample Failing Tape"** to scrub through a demo session immediately in your browser)*
+- **Try the Zero-Install Timeline Viewer (with WASM `.tape` decoder):** **[https://sayyidsh.github.io/devtape/](https://sayyidsh.github.io/devtape/)** *(drag-and-drop any `.tape` file or click **"Load Sample Failing Tape"** to scrub through a demo session immediately in your browser)*
 
 ---
 
@@ -17,11 +17,11 @@
 # Install from source via Cargo
 cargo install --git https://github.com/sayyidsh/devtape devtape-cli
 
-# Or install via Homebrew (macOS Apple Silicon prebuilt 3.94 MiB binary / source fallback)
+# Or install via Homebrew (macOS Apple Silicon / Intel & Linux prebuilt tarballs)
 brew install --formula https://raw.githubusercontent.com/sayyidsh/devtape/main/Formula/devtape.rb
 
 # Or download the prebuilt macOS Apple Silicon binary directly from GitHub Releases
-curl -fsSL https://github.com/sayyidsh/devtape/releases/download/v0.1.0/devtape -o devtape && chmod +x devtape
+curl -fsSL https://github.com/sayyidsh/devtape/releases/download/v0.2.0/devtape-aarch64-apple-darwin.tar.gz | tar -xz && chmod +x devtape
 ```
 
 ## 3-Step Quickstart
@@ -36,6 +36,17 @@ devtape export <SESSION_ID> --profile diff-only --review --out bug-report.tape
 # 3. Open the local read-only Timeline UI (or serve MCP tools to Claude Code / Codex)
 devtape view session.tape
 devtape mcp --tape session.tape
+```
+
+## GitHub Action (`devtape-action` — Automatic Failing CI `.tape` Artifacts)
+
+Wrap any CI test or build step in 4 lines of YAML to automatically record `ext.ci.v1` context, export a scrubbed `--profile diff-only` `.tape` archive on failure, and attach it to the workflow run with a direct link to the browser viewer:
+
+```yaml
+- name: Run tests with DevTape failure capture
+  uses: sayyidsh/devtape@v0.2.0
+  with:
+    command: cargo test --workspace
 ```
 
 ---

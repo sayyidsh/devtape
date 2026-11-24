@@ -44,6 +44,15 @@ pub fn decode_and_sanitize_tape_json(bytes: &[u8]) -> Result<String, CodecError>
     Ok(serde_json::to_string(&archive)?)
 }
 
+/// Browser entry point. The macro's generated ABI glue compiles under the crate's
+/// `forbid(unsafe_code)` policy; all validation uses the same codec as the CLI.
+#[cfg(target_arch = "wasm32")]
+#[wasm_bindgen::prelude::wasm_bindgen(js_name = decode_and_sanitize_tape_json)]
+pub fn decode_and_sanitize_tape_json_wasm(bytes: &[u8]) -> Result<String, wasm_bindgen::JsValue> {
+    decode_and_sanitize_tape_json(bytes)
+        .map_err(|error| wasm_bindgen::JsValue::from_str(&error.to_string()))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -89,5 +98,27 @@ mod tests {
         .unwrap();
         assert!(value["manifest"]["session_id"].is_string());
         assert!(decode_and_sanitize_tape_json(b"invalid").is_err());
+    }
+
+    #[test]
+    fn rejects_malicious_containers_before_presenting_them() {
+        for input in [
+            include_bytes!("../../../spec/conformance/13_decompression_bomb_declared_header.tape")
+                .as_slice(),
+            include_bytes!("../../../spec/conformance/14_decompression_bomb_zstd_stream.tape")
+                .as_slice(),
+            include_bytes!("../../../spec/conformance/15_path_traversal_dotdot.tape").as_slice(),
+            include_bytes!("../../../spec/conformance/16_tampered_integrity_blake3.tape")
+                .as_slice(),
+        ] {
+            assert!(decode_and_sanitize_tape_json(input).is_err());
+        }
+        let mut header =
+            include_bytes!("../../../spec/conformance/01_minimal_session.tape").to_vec();
+        header[8..16].copy_from_slice(&(1u64 << 32).to_be_bytes());
+        assert!(matches!(
+            decode_and_sanitize_tape_json(&header),
+            Err(CodecError::DecompressionLimitExceeded { .. })
+        ));
     }
 }

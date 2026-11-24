@@ -314,7 +314,7 @@ impl SessionStore {
                     | CoreEvent::StateSnapshot { .. },
                 ) => true,
                 (ExportProfile::DiffOnly, CoreEvent::Extension { extension_id, .. }) => {
-                    extension_id == "ext.git.v1"
+                    extension_id == "ext.git.v1" || extension_id == "ext.ci.v1"
                 }
                 (
                     ExportProfile::TraceOnly,
@@ -424,7 +424,9 @@ impl SessionStore {
         if profile == ExportProfile::TraceOnly {
             manifest.extensions.clear();
         } else if profile == ExportProfile::DiffOnly {
-            manifest.extensions.retain(|e| e == "ext.git.v1");
+            manifest
+                .extensions
+                .retain(|e| e == "ext.git.v1" || e == "ext.ci.v1");
         }
         let len = events.len() as u64;
         for (i, e) in events.iter_mut().enumerate() {

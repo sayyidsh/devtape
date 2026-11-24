@@ -24,6 +24,33 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
+      - name: Install Rust with the browser WASM target
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: wasm32-unknown-unknown
+
+      - name: Install LLVM tools for Zstandard's WASM build
+        run: sudo apt-get update && sudo apt-get install -y clang llvm lld
+
+      - name: Install the matching wasm-bindgen binding generator
+        run: cargo install wasm-bindgen-cli --version 0.2.130 --locked
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+
+      - name: Build and test the real browser decoder bundle
+        env:
+          CARGO_INCREMENTAL: '0'
+          CC_wasm32_unknown_unknown: clang
+          AR_wasm32_unknown_unknown: llvm-ar
+        run: |
+          cargo build --locked --release -p dtp-wasm --target wasm32-unknown-unknown
+          wasm-bindgen --target web --out-dir web/viewer/pkg --out-name dtp_wasm target/wasm32-unknown-unknown/release/dtp_wasm.wasm
+          printf '{"type":"module"}\n' > web/viewer/pkg/package.json
+          cargo run --locked -p dtp-wasm --example browser_fixture -- target/browser-test.tape
+          node scripts/test-wasm.mjs web/viewer/pkg/dtp_wasm.js
+
       - name: Configure Pages
         uses: actions/configure-pages@v5
 

@@ -1,5 +1,7 @@
 #![forbid(unsafe_code)]
 
+mod ci;
+
 use clap::{Parser, Subcommand};
 use devtape_pty::{PtyRecorder, RecordConfig};
 use devtape_scrub::{OverlapScrubber, RULESET_VERSION};
@@ -138,8 +140,9 @@ fn open_store(
 }
 
 #[tokio::main]
-async fn main() -> Result<(), Box<dyn std::error::Error>> {
+async fn main() -> Result<std::process::ExitCode, Box<dyn std::error::Error>> {
     let cli = Cli::parse();
+    let mut status = std::process::ExitCode::SUCCESS;
     match cli.command {
         Commands::View { path, port } => {
             let archive = TapeArchive::decode(&fs::read(path)?)?;
@@ -275,6 +278,11 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                     }
                 }
             }
+            if let Some((payload, redacted_count)) =
+                ci::github_context(|key| std::env::var(key).ok(), outcome.exit_code)
+            {
+                outcome.archive = ci::append_context(outcome.archive, payload, redacted_count)?;
+            }
             let store = open_store(db)?;
             store.store_archive(&outcome.archive)?;
             store.close()?;
@@ -289,6 +297,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 outcome.bytes_dropped,
                 outcome.exit_code
             );
+            status = std::process::ExitCode::from(u8::try_from(outcome.exit_code).unwrap_or(1));
         }
         Commands::Sessions { db } => {
             let store = open_store(db)?;
@@ -495,5 +504,5 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             );
         }
     }
-    Ok(())
+    Ok(status)
 }

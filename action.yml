@@ -1,0 +1,131 @@
+name: DevTape failure recording
+description: Record a command and upload a reviewed, scrubbed tape when it fails.
+branding:
+  icon: film
+  color: blue
+inputs:
+  command:
+    description: Shell command to record (Bash on Linux/macOS, PowerShell on Windows).
+    required: true
+  version:
+    description: DevTape release tag to install.
+    default: v0.2.0
+  profile:
+    description: Export privacy profile (full, diff-only, or trace-only).
+    default: diff-only
+  artifact_name:
+    description: Name of the uploaded tape artifact.
+    default: devtape-failure-tape
+  upload_always:
+    description: Upload a tape even when the command succeeds.
+    default: 'false'
+outputs:
+  exit_code:
+    description: The recorded command's exit code.
+    value: ${{ steps.report.outputs.exit_code }}
+runs:
+  using: composite
+  steps:
+    - name: Install verified DevTape release (Linux/macOS)
+      if: runner.os != 'Windows'
+      shell: bash
+      env:
+        DTP_VERSION: ${{ inputs.version }}
+      run: |
+        set -euo pipefail
+        [[ "$DTP_VERSION" =~ ^v[0-9]+\.[0-9]+\.[0-9]+(-[A-Za-z0-9.-]+)?$ ]] || { echo 'Invalid release version'; exit 1; }
+        case "$RUNNER_OS/$RUNNER_ARCH" in
+          Linux/X64) target=x86_64-unknown-linux-gnu ;;
+          macOS/ARM64) target=aarch64-apple-darwin ;;
+          macOS/X64) target=x86_64-apple-darwin ;;
+          *) echo "Unsupported runner: $RUNNER_OS/$RUNNER_ARCH"; exit 1 ;;
+        esac
+        install_dir=$(mktemp -d "$RUNNER_TEMP/devtape.XXXXXX")
+        cd "$install_dir"
+        asset="devtape-$target.tar.gz"
+        base="https://github.com/sayyidsh/devtape/releases/download/$DTP_VERSION"
+        curl --fail --silent --show-error --location "$base/$asset" --output "$asset"
+        curl --fail --silent --show-error --location "$base/$asset.sha256" --output "$asset.sha256"
+        if [[ "$RUNNER_OS" == macOS ]]; then shasum -a 256 -c "$asset.sha256"; else sha256sum -c "$asset.sha256"; fi
+        tar -xzf "$asset"
+        chmod +x devtape
+        echo "$install_dir" >> "$GITHUB_PATH"
+    - name: Install verified DevTape release (Windows)
+      if: runner.os == 'Windows'
+      shell: pwsh
+      env:
+        DTP_VERSION: ${{ inputs.version }}
+      run: |
+        $ErrorActionPreference = 'Stop'
+        if ($env:DTP_VERSION -notmatch '^v[0-9]+\.[0-9]+\.[0-9]+(-[A-Za-z0-9.-]+)?$') { throw 'Invalid release version' }
+        if ($env:RUNNER_ARCH -ne 'X64') { throw 'Only Windows X64 releases are supported' }
+        $dir = Join-Path $env:RUNNER_TEMP ('devtape-' + [guid]::NewGuid())
+        New-Item -ItemType Directory -Path $dir | Out-Null
+        $asset = 'devtape-x86_64-pc-windows-msvc.zip'
+        $archive = Join-Path $dir $asset
+        $base = "https://github.com/sayyidsh/devtape/releases/download/$env:DTP_VERSION"
+        Invoke-WebRequest "$base/$asset" -OutFile $archive
+        Invoke-WebRequest "$base/$asset.sha256" -OutFile "$archive.sha256"
+        $expected = (Get-Content "$archive.sha256" -Raw).Trim().Split()[0]
+        if ($expected -notmatch '^[a-fA-F0-9]{64}$') { throw 'Invalid SHA-256 file' }
+        if ((Get-FileHash $archive -Algorithm SHA256).Hash -ne $expected) { throw 'DevTape SHA-256 mismatch' }
+        Expand-Archive $archive -DestinationPath $dir
+        $dir | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
+    - name: Record command (Linux/macOS)
+      if: runner.os != 'Windows'
+      id: record_unix
+      continue-on-error: true
+      shell: bash
+      env:
+        DTP_COMMAND: ${{ inputs.command }}
+      run: |
+        set -euo pipefail
+        umask 077
+        mkdir -p .devtape
+        rm -f .devtape/raw.tape
+        # The command is data, not interpolated into the action's own shell source.
+        command_file=$(mktemp "$RUNNER_TEMP/devtape-command.XXXXXX.sh")
+        echo "DTP_COMMAND_PATH=$command_file" >> "$GITHUB_ENV"
+        printf '%s\n' "$DTP_COMMAND" > "$command_file"
+        devtape record --qos lossless --db .devtape/ci-sessions.db --out .devtape/raw.tape -- bash --noprofile --norc -e -o pipefail "$command_file"
+    - name: Record command (Windows)
+      if: runner.os == 'Windows'
+      id: record_windows
+      continue-on-error: true
+      shell: pwsh
+      env:
+        DTP_COMMAND: ${{ inputs.command }}
+      run: |
+        $ErrorActionPreference = 'Stop'
+        New-Item -ItemType Directory -Force .devtape | Out-Null
+        Remove-Item .devtape/raw.tape -ErrorAction SilentlyContinue
+        $script = '$ErrorActionPreference = "Stop"' + "`n" + $env:DTP_COMMAND + "`n" + 'if ($LASTEXITCODE) { exit $LASTEXITCODE }'
+        $commandFile = Join-Path $env:RUNNER_TEMP ('devtape-command-' + [guid]::NewGuid() + '.ps1')
+        "DTP_COMMAND_PATH=$commandFile" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+        Set-Content -Path $commandFile -Value $script -Encoding utf8
+        devtape record --qos lossless --db .devtape/ci-sessions.db --out .devtape/raw.tape -- pwsh -NoLogo -NoProfile -NonInteractive -File $commandFile
+        exit $LASTEXITCODE
+    - name: Export reviewed CI tape and write summary
+      if: always()
+      id: report
+      shell: bash
+      env:
+        DTP_PROFILE: ${{ inputs.profile }}
+        DTP_UPLOAD_ALWAYS: ${{ inputs.upload_always }}
+        DTP_RECORD_FAILED: ${{ steps.record_unix.outcome == 'failure' || steps.record_windows.outcome == 'failure' }}
+      run: node "$GITHUB_ACTION_PATH/scripts/action/report.mjs"
+    - name: Upload failure tape
+      if: always() && steps.report.outputs.upload == 'true'
+      uses: actions/upload-artifact@v4
+      with:
+        name: ${{ inputs.artifact_name }}
+        path: devtape-ci.tape
+        if-no-files-found: error
+    - name: Remove temporary command files
+      if: always()
+      shell: bash
+      run: node -e 'if (process.env.DTP_COMMAND_PATH) require("node:fs").rmSync(process.env.DTP_COMMAND_PATH, {force:true})'
+    - name: Propagate recorded command failure
+      if: always() && (steps.report.outcome != 'success' || steps.report.outputs.exit_code != '0')
+      shell: bash
+      run: exit 1

@@ -11,5 +11,5 @@ keywords.workspace = true
 categories.workspace = true
 
 [dependencies]
-dtp-codec = { version = "0.1.0", path = "../dtp-codec" }
+dtp-codec = { version = "0.2.0", path = "../dtp-codec" }
 serde_json.workspace = true
