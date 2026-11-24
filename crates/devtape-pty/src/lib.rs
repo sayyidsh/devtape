@@ -484,14 +484,11 @@ impl PtyRecorder {
         } else {
             None
         };
-        #[cfg(unix)]
         let initial_size = if interactive {
             parent_terminal_size()
         } else {
             None
         };
-        #[cfg(not(unix))]
-        let initial_size: Option<(u16, u16)> = None;
         let (rows, cols) = initial_size.unwrap_or((config.rows, config.cols));
         let pty_system = native_pty_system();
         let pair = pty_system
