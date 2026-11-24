@@ -4,12 +4,12 @@
 <meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
 <title>DevTape Viewer</title>
 <style>
-:root{color-scheme:dark;--bg:#10151d;--panel:#18212c;--text:#e8eef3;--muted:#9babb9;--accent:#7dd9c8}*{box-sizing:border-box}body{font:15px system-ui,sans-serif;background:var(--bg);color:var(--text);margin:0}main{max-width:1100px;margin:auto;padding:28px}header{display:flex;align-items:center;justify-content:space-between;gap:1rem}h1{font-size:24px;margin:0}h2{font-size:17px}.badge{color:var(--muted);font-size:12px}section{background:var(--panel);padding:18px;border-radius:12px;margin:16px 0}#dropzone{border:1px dashed #708592;text-align:center}#dropzone.active{border-color:var(--accent)}button,input{font:inherit;color:inherit;background:#202e3a;border:1px solid #526474;border-radius:6px;padding:8px}button{cursor:pointer}button[aria-pressed=true]{background:#27675e;border-color:var(--accent)}.filters{display:flex;flex-wrap:wrap;gap:6px}.search{width:100%;margin:12px 0}pre{white-space:pre-wrap;overflow-wrap:anywhere;margin:0;font:13px ui-monospace,monospace}article{padding:12px 0;border-top:1px solid #344452}#message{color:#ffcc8a;white-space:pre-wrap}label{color:var(--muted)}input[type=range]{width:100%;padding:0}a{color:var(--accent)}
+:root{color-scheme:dark;--bg:#10151d;--panel:#18212c;--text:#e8eef3;--muted:#9babb9;--accent:#7dd9c8}*{box-sizing:border-box}body{font:15px system-ui,sans-serif;background:var(--bg);color:var(--text);margin:0}main{max-width:1100px;margin:auto;padding:28px}header{display:flex;align-items:center;justify-content:space-between;gap:1rem}h1{font-size:24px;margin:0}h2{font-size:17px}.badge{color:var(--muted);font-size:12px}section{background:var(--panel);padding:18px;border-radius:12px;margin:16px 0}#dropzone{border:1px dashed #708592;text-align:center}#dropzone.active{border-color:var(--accent)}button,input{font:inherit;color:inherit;background:#202e3a;border:1px solid #526474;border-radius:6px;padding:8px}button{cursor:pointer}button[aria-pressed=true]{background:#27675e;border-color:var(--accent)}.actions{display:flex;flex-wrap:wrap;justify-content:center;gap:8px;margin-top:8px}.filters{display:flex;flex-wrap:wrap;gap:6px}.search{width:100%;margin:12px 0}pre{white-space:pre-wrap;overflow-wrap:anywhere;margin:0;font:13px ui-monospace,monospace}article{padding:12px 0;border-top:1px solid #344452}#message{color:#ffcc8a;white-space:pre-wrap}label{color:var(--muted)}input[type=range]{width:100%;padding:0}a{color:var(--accent)}
 </style>
 </head>
 <body><main>
 <header><h1>DevTape Timeline</h1><span class="badge">Recorded with DevTape</span></header>
-<section id="dropzone"><p>Drop a .tape or JSON archive here, or choose a file.</p><input id="file" type="file" accept=".tape,.json,application/json"></section>
+<section id="dropzone"><p>Drop a .tape or JSON archive here, choose a file, or try the interactive demo session.</p><div class="actions"><input id="file" type="file" accept=".tape,.json,application/json"><button id="sample" type="button">Load Sample Failing Tape</button></div></section>
 <p id="message" role="status"></p>
 <section><h2>Manifest &amp; Redaction Attestation</h2><pre id="manifest">Open a recording to begin.</pre></section>
 <section><h2>Timeline</h2><div class="filters" id="filters">
@@ -19,6 +19,37 @@
 'use strict';
 const byId = id => document.getElementById(id);
 let archive = null, active = 'All';
+const SAMPLE_TAPE = {
+  manifest: {
+    spec_version: '0.1.0',
+    session_id: 'sess_demo_failing_ci_01',
+    os: 'macos',
+    arch: 'aarch64',
+    shell: 'zsh',
+    qos_mode: 'zero_stall',
+    export_profile: 'full',
+    extensions: ['ext.git.v1', 'ext.http.v1', 'ext.mcp.v1'],
+    redaction: {
+      ruleset_version: 'dtp-scrub-0.1',
+      redacted_count: 2,
+      local_map_excluded: true
+    }
+  },
+  integrity_blake3: '9f8e7d6c5b4a3928172635445566778899aabbccddeeff001122334455667788',
+  events: [
+    {seq:1,hlc:{physical_ms:1763980000100,logical:0,node_id:1},span_id:'sp_8f12a0c4e91b0001',parent_span_id:null,event:{type:'session_start',sanitized_cwd:'~/projects/payment-service',env_fingerprint:'a1b2c3d4e5f60718'}},
+    {seq:2,hlc:{physical_ms:1763980000120,logical:0,node_id:1},span_id:'sp_8f12a0c4e91b0001',parent_span_id:null,event:{type:'span_start',kind:'command',label:'cargo test --test checkout_flow'}},
+    {seq:3,hlc:{physical_ms:1763980000150,logical:0,node_id:3},span_id:'sp_8f12a0c4e91b0001',parent_span_id:null,event:{type:'stream_chunk',channel:'stdin',data:'export STRIPE_KEY=<DTP:REDACTED:API_KEY:4e91c2>\n'}},
+    {seq:4,hlc:{physical_ms:1763980000210,logical:0,node_id:2},span_id:'sp_8f12a0c4e91b0001',parent_span_id:null,event:{type:'stream_chunk',channel:'stdout',data:'running 3 tests\ntest checkout::idempotency_check ... ok\ntest checkout::webhook_signature ... FAILED\n'}},
+    {seq:5,hlc:{physical_ms:1763980000280,logical:0,node_id:10},span_id:'sp_8f12a0c4e91b0001',parent_span_id:null,event:{type:'extension',extension_id:'ext.http.v1',event_name:'http_exchange',payload:{method:'POST',url:'http://127.0.0.1:4123/v1/charges',request_headers:[{name:'Host',value:'127.0.0.1:4123'},{name:'Authorization',value:'<DTP:REDACTED:BEARER:81c0f9>'}],response_headers:[{name:'Content-Type',value:'application/json'}],request_body:'{"amount":4900,"currency":"usd"}',response_body:'{"error":"signature_Verification_failed"}',request_body_truncated:false,response_body_truncated:false,status:502,latency_ms:18,request_bytes:32,response_bytes:41,bytes:73}}},
+    {seq:6,hlc:{physical_ms:1763980000320,logical:0,node_id:4},span_id:'sp_8f12a0c4e91b0001',parent_span_id:null,event:{type:'stream_chunk',channel:'stderr',data:'thread \'checkout::webhook_signature\' panicked at src/checkout.rs:142:9:\nassertion `left == right` failed: upstream loopback returned HTTP 502\n'}},
+    {seq:7,hlc:{physical_ms:1763980000350,logical:0,node_id:2},span_id:'sp_8f12a0c4e91b0001',parent_span_id:null,event:{type:'drop_marker',bytes_dropped:16384,reason:'qos0_channel_backpressure'}},
+    {seq:8,hlc:{physical_ms:1763980000410,logical:0,node_id:1},span_id:'sp_8f12a0c4e91b0001',parent_span_id:null,event:{type:'span_end',exit_code:101,duration_ms:290}},
+    {seq:9,hlc:{physical_ms:1763980000430,logical:0,node_id:1},span_id:'sp_8f12a0c4e91b0001',parent_span_id:null,event:{type:'state_snapshot',tree_blake3:'3b9a841e77c0f1d2e3a4b5c6d7e8f90112233445566778899aabbccddeeff012',changed_files:['src/checkout.rs','tests/checkout_flow.rs']}},
+    {seq:10,hlc:{physical_ms:1763980000431,logical:1,node_id:1},span_id:'sp_8f12a0c4e91b0001',parent_span_id:null,event:{type:'extension',extension_id:'ext.git.v1',event_name:'shadow_snapshot',payload:{snapshot_id:'snap_01',git_tree_oid:'4b825dc642cb6eb9a060e54bf8d69288fbee4904',head_oid:'a912bb975fe986d7928d5236fd4ec30b8f410921',branch:'main'}}},
+    {seq:11,hlc:{physical_ms:1763980000450,logical:0,node_id:1},span_id:'sp_8f12a0c4e91b0001',parent_span_id:null,event:{type:'session_end',total_events:11,duration_ms:350}}
+  ]
+};
 function showError(error) { byId('message').textContent = String(error); }
 function present(data) {
   if (!data || !data.manifest || !Array.isArray(data.events)) throw new Error('Invalid archive JSON');
@@ -49,6 +80,7 @@ function render() {
 }
 for (const button of byId('filters').querySelectorAll('button')) button.addEventListener('click',()=>{active=button.textContent;for(const b of byId('filters').querySelectorAll('button')) b.setAttribute('aria-pressed',String(b===button));render();});
 byId('search').addEventListener('input',render); byId('timeline').addEventListener('input',render);
+byId('sample').addEventListener('click',()=>present(SAMPLE_TAPE));
 async function openFile(file) {
  try {
   if (!file) return;

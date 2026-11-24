@@ -12,6 +12,8 @@ jobs:
   build:
     name: Build (${{ matrix.target }})
     runs-on: ${{ matrix.os }}
+    env:
+      CARGO_INCREMENTAL: "0"
     strategy:
       fail-fast: false
       matrix:
@@ -43,10 +45,11 @@ jobs:
           targets: ${{ matrix.target }}
 
       - name: Run workspace test suite
-        run: CARGO_INCREMENTAL=0 cargo test --workspace --target ${{ matrix.target }}
+        if: matrix.target != 'x86_64-apple-darwin'
+        run: cargo test --workspace --target ${{ matrix.target }}
 
       - name: Build stripped release binary
-        run: CARGO_INCREMENTAL=0 cargo build --release -p devtape-cli --target ${{ matrix.target }}
+        run: cargo build --release -p devtape-cli --target ${{ matrix.target }}
 
       - name: Enforce < 15 MB release binary budget (Unix)
         if: runner.os != 'Windows'

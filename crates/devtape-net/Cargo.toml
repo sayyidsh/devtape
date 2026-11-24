@@ -1,12 +1,18 @@
 [package]
 name = "devtape-net"
+description = "Opt-in child-only loopback HTTP capture proxy with ephemeral session CA and body truncation for DevTape"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
+repository.workspace = true
+homepage.workspace = true
+readme.workspace = true
+keywords.workspace = true
+categories.workspace = true
 
 [dependencies]
-devtape-scrub = { path = "../devtape-scrub" }
-dtp-codec = { path = "../dtp-codec" }
+devtape-scrub = { version = "0.1.0", path = "../devtape-scrub" }
+dtp-codec = { version = "0.1.0", path = "../dtp-codec" }
 httparse = "1.10.1"
 rcgen = { version = "0.13", default-features = false, features = ["crypto", "ring", "pem"] }
 serde_json.workspace = true

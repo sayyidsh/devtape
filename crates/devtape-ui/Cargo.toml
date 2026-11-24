@@ -1,11 +1,17 @@
 [package]
 name = "devtape-ui"
+description = "Loopback-only embedded Timeline UI server for inspecting DTP v0.1 .tape archives"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
+repository.workspace = true
+homepage.workspace = true
+readme.workspace = true
+keywords.workspace = true
+categories.workspace = true
 
 [dependencies]
-dtp-codec = { path = "../dtp-codec" }
-dtp-wasm = { path = "../dtp-wasm" }
+dtp-codec = { version = "0.1.0", path = "../dtp-codec" }
+dtp-wasm = { version = "0.1.0", path = "../dtp-wasm" }
 serde_json.workspace = true
 tokio.workspace = true

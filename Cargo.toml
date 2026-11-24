@@ -17,6 +17,11 @@ members = [
 version = "0.1.0"
 edition = "2021"
 license = "Apache-2.0"
+repository = "https://github.com/sayyidsh/devtape"
+homepage = "https://sayyidsh.github.io/devtape/"
+readme = "README.md"
+keywords = ["terminal", "replay", "pty", "mcp", "debugging"]
+categories = ["command-line-utilities", "development-tools::debugging"]
 
 [workspace.dependencies]
 blake3 = "1.5"

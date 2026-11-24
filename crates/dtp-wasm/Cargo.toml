@@ -1,9 +1,15 @@
 [package]
 name = "dtp-wasm"
+description = "Incremental per-span ANSI replay sanitizer and .tape decoder helper for DevTape viewer front ends"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
+repository.workspace = true
+homepage.workspace = true
+readme.workspace = true
+keywords.workspace = true
+categories.workspace = true
 
 [dependencies]
-dtp-codec = { path = "../dtp-codec" }
+dtp-codec = { version = "0.1.0", path = "../dtp-codec" }
 serde_json.workspace = true

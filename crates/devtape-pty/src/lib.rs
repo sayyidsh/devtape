@@ -691,17 +691,31 @@ impl PtyRecorder {
         seq += 1;
 
         // 3. Drain streaming chunks and drop markers.
+        let mut pair_master = Some(pair.master);
+        let mut wait_handle = Some(wait_handle);
+        let mut child_exit_code: Option<i32> = None;
         let mut resize_rx = config.resize_rx.clone();
         let mut last_parent_size = initial_size;
         let mut size_interval = tokio::time::interval(std::time::Duration::from_millis(250));
         loop {
             let signal = tokio::select! {
                 signal = consumer.recv() => match signal { Some(signal) => signal, None => break },
+                res = async { wait_handle.as_mut().expect("guarded").await }, if cfg!(windows) && wait_handle.is_some() => {
+                    wait_handle = None;
+                    child_exit_code = Some(res.map_err(|e| PtyError::Join(e.to_string()))??);
+                    // Give ConPTY a brief moment to flush buffered child output, then drop
+                    // the master handle so the blocking reader thread receives EOF on Windows.
+                    tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+                    pair_master = None;
+                    continue;
+                },
                 _ = size_interval.tick(), if interactive => {
                     let measured = tokio::task::spawn_blocking(parent_terminal_size).await.map_err(|e| PtyError::Join(e.to_string()))?;
                     if let Some((rows, cols)) = measured {
                         if last_parent_size != Some((rows, cols)) {
-                            pair.master.resize(PtySize { rows, cols, pixel_width: 0, pixel_height: 0 }).map_err(|e| PtyError::Pty(e.to_string()))?;
+                            if let Some(ref master) = pair_master {
+                                master.resize(PtySize { rows, cols, pixel_width: 0, pixel_height: 0 }).map_err(|e| PtyError::Pty(e.to_string()))?;
+                            }
                             events.push(EventEnvelope { seq, hlc: clock.tick(now_wall_ms()), span_id: root_span_id.clone(), parent_span_id: parent_span_id.clone(), event: CoreEvent::Extension { extension_id: "ext.pty.v1".into(), event_name: "terminal_resize".into(), payload: serde_json::json!({"rows": rows, "cols": cols}) } });
                             seq += 1;
                             last_parent_size = Some((rows, cols));
@@ -712,7 +726,9 @@ impl PtyRecorder {
                 result = async { resize_rx.as_mut().expect("guarded").changed().await }, if resize_rx.is_some() => {
                     if result.is_err() { resize_rx = None; continue; }
                     let (rows, cols) = *resize_rx.as_mut().expect("guarded").borrow_and_update();
-                    pair.master.resize(PtySize { rows, cols, pixel_width: 0, pixel_height: 0 }).map_err(|e| PtyError::Pty(e.to_string()))?;
+                    if let Some(ref master) = pair_master {
+                        master.resize(PtySize { rows, cols, pixel_width: 0, pixel_height: 0 }).map_err(|e| PtyError::Pty(e.to_string()))?;
+                    }
                     events.push(EventEnvelope { seq, hlc: clock.tick(now_wall_ms()), span_id: root_span_id.clone(), parent_span_id: parent_span_id.clone(), event: CoreEvent::Extension { extension_id: "ext.pty.v1".into(), event_name: "terminal_resize".into(), payload: serde_json::json!({"rows": rows, "cols": cols}) } });
                     seq += 1;
                     continue;
@@ -772,8 +788,14 @@ impl PtyRecorder {
                 .join()
                 .map_err(|_| PtyError::Join("PTY stdin writer panicked".into()))??;
         }
-        // Drop master after reader thread finishes so all PTY descriptors are released cleanly.
-        drop(pair.master);
+        drop(pair_master);
+        let exit_code = match child_exit_code {
+            Some(code) => code,
+            None => wait_handle
+                .expect("wait_handle present")
+                .await
+                .map_err(|e| PtyError::Join(e.to_string()))??,
+        };
 
         // Flush any remaining drop count that could not fit into the channel before close.
         let trailing_drops = consumer.take_pending_drops();
@@ -823,9 +845,6 @@ impl PtyRecorder {
             seq += 1;
         }
 
-        let exit_code = wait_handle
-            .await
-            .map_err(|e| PtyError::Join(e.to_string()))??;
         let duration_ms = start_instant.elapsed().as_millis() as u64;
 
         // 4. SpanEnd

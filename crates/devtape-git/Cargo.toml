@@ -1,12 +1,18 @@
 [package]
 name = "devtape-git"
+description = "Non-destructive Git shadow snapshots, FastCDC content-addressed storage, and safe working-tree rewind for DevTape"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
+repository.workspace = true
+homepage.workspace = true
+readme.workspace = true
+keywords.workspace = true
+categories.workspace = true
 
 [dependencies]
 blake3.workspace = true
-dtp-codec = { path = "../dtp-codec" }
+dtp-codec = { version = "0.1.0", path = "../dtp-codec" }
 serde.workspace = true
 serde_json.workspace = true
 thiserror.workspace = true

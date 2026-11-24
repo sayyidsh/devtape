@@ -1,9 +1,15 @@
 [package]
 name = "devtape-mcp"
+description = "Read-only JSON-RPC 2.0 MCP server over stdio for inspecting DTP v0.1 .tape archives"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
+repository.workspace = true
+homepage.workspace = true
+readme.workspace = true
+keywords.workspace = true
+categories.workspace = true
 
 [dependencies]
-dtp-codec = { path = "../dtp-codec" }
+dtp-codec = { version = "0.1.0", path = "../dtp-codec" }
 serde_json.workspace = true
