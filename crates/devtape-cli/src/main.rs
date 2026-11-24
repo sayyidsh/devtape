@@ -29,6 +29,9 @@ enum Commands {
         /// Output .tape archive path.
         #[arg(short, long, default_value = "session.tape")]
         out: PathBuf,
+        /// SQLite session database path.
+        #[arg(long)]
+        db: Option<PathBuf>,
         /// QoS mode: zero-stall (QoS-0) or lossless (QoS-1).
         #[arg(long, default_value = "zero-stall")]
         qos: String,
@@ -38,6 +41,23 @@ enum Commands {
         /// Command and arguments to execute inside the PTY (defaults to $SHELL).
         #[arg(trailing_var_arg = true)]
         cmd: Vec<String>,
+    },
+    /// List stored sessions.
+    Sessions {
+        #[arg(long)]
+        db: Option<PathBuf>,
+    },
+    /// Export a stored session with a privacy profile.
+    Export {
+        session_id: String,
+        #[arg(long, default_value = "full")]
+        profile: String,
+        #[arg(long)]
+        review: bool,
+        #[arg(long)]
+        db: Option<PathBuf>,
+        #[arg(long)]
+        out: PathBuf,
     },
     /// Capture the current Git working tree using a private index.
     Snapshot {
@@ -81,12 +101,35 @@ fn parse_qos_mode(raw: &str) -> Result<QosMode, String> {
     }
 }
 
+fn open_store(
+    explicit: Option<PathBuf>,
+) -> Result<devtape_core::SessionStore, devtape_core::CoreError> {
+    let interval = std::time::Duration::from_millis(300);
+    if let Some(path) = explicit.or_else(|| std::env::var_os("DEVTAPE_DB").map(PathBuf::from)) {
+        return devtape_core::SessionStore::open(path, interval);
+    }
+    let path = std::env::current_dir()?.join(".devtape/sessions.db");
+    match devtape_core::SessionStore::open(path, interval) {
+        Ok(store) => Ok(store),
+        Err(e) if e.is_unwritable() => {
+            let fallback = std::env::temp_dir().join("devtape/sessions.db");
+            eprintln!(
+                "[devtape] database location is unwritable; using {}",
+                fallback.display()
+            );
+            devtape_core::SessionStore::open(fallback, interval)
+        }
+        Err(e) => Err(e),
+    }
+}
+
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let cli = Cli::parse();
     match cli.command {
         Commands::Record {
             out,
+            db,
             qos,
             max_buffer_bytes,
             cmd,
@@ -158,6 +201,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                     }
                 }
             }
+            let store = open_store(db)?;
+            store.store_archive(&outcome.archive)?;
+            store.close()?;
             let encoded = outcome.archive.encode()?;
             fs::write(&out, &encoded)?;
             eprintln!(
@@ -169,6 +215,32 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 outcome.bytes_dropped,
                 outcome.exit_code
             );
+        }
+        Commands::Sessions { db } => {
+            let store = open_store(db)?;
+            println!("{}", serde_json::to_string_pretty(&store.sessions()?)?);
+            store.close()?;
+        }
+        Commands::Export {
+            session_id,
+            profile,
+            review,
+            db,
+            out,
+        } => {
+            let profile = match profile.as_str() {
+                "full" => ExportProfile::Full,
+                "diff-only" | "diff_only" => ExportProfile::DiffOnly,
+                "trace-only" | "trace_only" => ExportProfile::TraceOnly,
+                _ => return Err(format!("unknown profile: {profile}").into()),
+            };
+            let store = open_store(db)?;
+            let (archive, report) = store.export_session(&session_id, profile)?;
+            if review {
+                eprintln!("{}", serde_json::to_string_pretty(&report)?);
+            }
+            fs::write(out, archive.encode()?)?;
+            store.close()?;
         }
         Commands::Snapshot { repo, label } => println!(
             "{}",
