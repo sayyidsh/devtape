@@ -1,0 +1,562 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>تحويل DevTape من أداة إلى بروتوكول عالمي (DTP v1): دراسة معمّقة للمعوقات والمعمارية</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans+Arabic:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+/* Tier 3 Utilitarian · Arabic RTL Protocol Specification & Obstacles Deep-Dive · Answer-first full-width hero + 3-layer Protocol Stack SVG · Sections: Tool vs Protocol Strategy -> 3-Layer DTP Architecture SVG -> Low-Level Systems Obstacles Table 1 -> Standardization & Adoption Obstacles Table 2 -> Security & Conformance Model (Asymmetric Split + Pull Quote) -> 4-Stage Protocol Governance Band · Fonts: IBM Plex Sans Arabic + IBM Plex Mono · Palette: Cool Technical Slate #F4F6F8 + Deep Ink #0F172A + Teal #0D9488/#115E59 + Indigo #4F46E5/#3730A3 · Image radius: 0px · Emphasis moment: Headline verdict · Signature element: Full-bleed dark Protocol Governance band · Charts: 3-Layer Protocol Stack Architecture SVG */
+
+:root {
+  --paper: #F4F6F8;
+  --ink: #0F172A;
+  --ink2: #1E293B;
+  --mute: #374151;
+  --hair: #CBD5E1;
+  --accent: #0D9488;
+  --accent-text: #115E59;
+  --accent-2: #4F46E5;
+  --accent-2-text: #3730A3;
+}
+
+*, *::before, *::after {
+  box-sizing: border-box;
+}
+
+html {
+  background: var(--paper);
+  color: var(--ink);
+  font-family: 'IBM Plex Sans Arabic', -apple-system, BlinkMacSystemFont, sans-serif;
+  font-size: 16px;
+  line-height: 1.72;
+  -webkit-font-smoothing: antialiased;
+}
+
+body {
+  margin: 0;
+  background: var(--paper);
+  color: var(--ink);
+}
+
+main {
+  padding: 64px clamp(24px, 9.5vw, 108px) 92px;
+}
+
+.grid-12 {
+  display: grid;
+  grid-template-columns: repeat(12, minmax(0, 1fr));
+  gap: 24px;
+}
+
+.measure {
+  max-width: 68ch;
+}
+
+.sec {
+  margin-top: 68px;
+  padding-top: 32px;
+  border-top: 1px solid var(--hair);
+}
+
+.sec-plain {
+  margin-top: 52px;
+}
+
+/* Full-width answer-first hero */
+.hero {
+  padding-bottom: 32px;
+  border-bottom: 2px solid var(--ink);
+}
+
+h1 {
+  font-weight: 700;
+  font-size: clamp(32px, 4.1vw, 48px);
+  line-height: 1.18;
+  margin: 0 0 18px;
+  text-wrap: balance;
+  color: var(--ink);
+  max-width: 28ch;
+}
+
+.deck {
+  font-size: 18px;
+  line-height: 1.65;
+  color: var(--ink2);
+  margin: 0;
+  max-width: 66ch;
+}
+
+/* Headings & text */
+h2 {
+  font-weight: 700;
+  font-size: clamp(23px, 2.4vw, 30px);
+  line-height: 1.28;
+  margin: 0 0 16px;
+  color: var(--ink);
+  text-wrap: balance;
+}
+
+h3 {
+  font-weight: 600;
+  font-size: 18px;
+  line-height: 1.38;
+  margin: 0 0 10px;
+  color: var(--ink);
+}
+
+p {
+  margin: 0 0 16px;
+  color: var(--ink2);
+}
+
+p:last-child {
+  margin-bottom: 0;
+}
+
+strong {
+  color: var(--ink);
+  font-weight: 600;
+}
+
+code {
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: 13.5px;
+  color: var(--ink);
+  direction: ltr;
+  unicode-bidi: embed;
+}
+
+/* 3-column open strip (0 cards) */
+.cols-3 {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 28px;
+  margin-top: 28px;
+}
+
+.col-item {
+  border-top: 2px solid var(--ink);
+  padding-top: 16px;
+}
+
+.col-item.teal-top {
+  border-top-color: var(--accent);
+}
+
+.col-item.indigo-top {
+  border-top-color: var(--accent-2);
+}
+
+.col-label {
+  font-size: 13.5px;
+  font-weight: 600;
+  color: var(--accent-text);
+  margin-bottom: 8px;
+}
+
+.col-label.indigo {
+  color: var(--accent-2-text);
+}
+
+/* Figures & SVGs */
+figure {
+  margin: 28px 0 0;
+  padding: 0;
+}
+
+.fig-title {
+  font-weight: 700;
+  font-size: 18px;
+  line-height: 1.4;
+  color: var(--ink);
+  margin: 0 0 14px;
+}
+
+figcaption {
+  font-size: 13px;
+  line-height: 1.6;
+  color: var(--mute);
+  margin-top: 12px;
+}
+
+/* Open Tables (max 3; using 2 dense deep-dive tables) */
+.table-wrap {
+  width: 100%;
+  overflow-x: auto;
+  margin-top: 24px;
+}
+
+table {
+  width: 100%;
+  border-collapse: collapse;
+  text-align: right;
+}
+
+thead th {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--mute);
+  padding: 12px 0 12px 18px;
+  border-bottom: 2px solid var(--ink);
+  vertical-align: bottom;
+}
+
+tbody td {
+  padding: 16px 0 16px 18px;
+  border-bottom: 1px solid var(--hair);
+  vertical-align: top;
+  font-size: 14.5px;
+  line-height: 1.64;
+  color: var(--ink2);
+}
+
+.lead-cell {
+  font-weight: 600;
+  color: var(--ink);
+  min-width: 190px;
+}
+
+.risk-cell {
+  color: var(--mute);
+  min-width: 210px;
+}
+
+.sol-cell {
+  color: var(--ink);
+}
+
+/* Asymmetric split */
+.split-left {
+  grid-column: 1 / 5;
+}
+
+.split-right {
+  grid-column: 5 / 13;
+}
+
+ul.clean-list {
+  list-style: none;
+  margin: 8px 0 0;
+  padding: 0;
+}
+
+ul.clean-list li {
+  position: relative;
+  padding: 0 20px 14px 0;
+  color: var(--ink2);
+}
+
+ul.clean-list li::before {
+  content: "";
+  position: absolute;
+  right: 0;
+  top: 11px;
+  width: 7px;
+  height: 7px;
+  background: var(--accent);
+}
+
+/* Pull Quote */
+.pull-quote {
+  margin: 36px 0 0;
+  padding: 18px 24px 18px 0;
+  border-right: 4px solid var(--accent-2);
+  font-weight: 600;
+  font-size: clamp(20px, 2.2vw, 25px);
+  line-height: 1.48;
+  color: var(--ink);
+  max-width: 50ch;
+}
+
+/* Full-bleed dark signature band */
+.full-band {
+  margin: 68px calc(-1 * clamp(24px, 9.5vw, 108px)) 0;
+  padding: 56px clamp(24px, 9.5vw, 108px);
+  background: #0F172A;
+  color: #F8FAFC;
+}
+
+.full-band h2 {
+  color: #FFFFFF;
+}
+
+.full-band h3 {
+  color: #5EEAD4;
+}
+
+.full-band p {
+  color: #CBD5E1;
+}
+
+.full-band strong {
+  color: #FFFFFF;
+}
+
+.full-band code {
+  color: #A5B4FC;
+}
+
+.band-cols {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 24px;
+  margin-top: 28px;
+}
+
+.band-item {
+  border-top: 1px solid #334155;
+  padding-top: 16px;
+}
+
+.band-step {
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: 13px;
+  color: #A5B4FC;
+  margin: 0 0 8px;
+  direction: ltr;
+  text-align: right;
+}
+
+@media (max-width: 960px) {
+  .band-cols {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 860px) {
+  .split-left, .split-right {
+    grid-column: 1 / -1;
+  }
+  .cols-3, .band-cols {
+    grid-template-columns: 1fr;
+  }
+}
+</style>
+</head>
+<body>
+<main>
+
+  <!-- HERO: Full-Width Answer-First -->
+  <header class="hero">
+    <h1>حوّل DevTape إلى بروتوكول مفتوح (DTP) تتبناه كل المحررات ووكلاء الذكاء الاصطناعي</h1>
+    <p class="deck">الأدوات تتنافس وتموت عندما يظهر بديل أسرع، أما البروتوكولات المفتوحة (مثل Git وLSP وOpenTelemetry وMCP) فتصبح البنية التحتية المشتركة للصناعة بأكملها. لتنجح في تحويل الفكرة إلى معيار عالمي، يجب فصل <strong>مواصفة البروتوكول</strong> عن <strong>أداة Rust المرجعية</strong> ومعالجة 10 معوقات هندسية ومعيارية عميقة منذ اليوم الأول.</p>
+  </header>
+
+  <!-- SECTION 1: 3-Layer Protocol Stack SVG -->
+  <section class="sec-plain">
+    <div class="measure">
+      <h2>بنية بروتوكول DevTape (DTP v1): ثلاث طبقات مفصولة تماماً</h2>
+      <p>لكي يصبح <strong>DevTape Protocol (DTP)</strong> معياراً عالمياً لتبادل «سياق التنفيذ البرمجي»، لا يكفي تعريف صيغة ملف فقط. يجب أن يحدد البروتوكول عقداً واضحاً بين <strong>المنتجين (Producers)</strong> مثل الطرفيات والمحررات ووكلاء البرمجة وخطوط CI، وبين <strong>المستهلكين (Consumers)</strong> مثل أدوات الرجوع بالزمن والعارضات التفاعلية ووكلاء التصحيح.</p>
+    </div>
+
+    <figure>
+      <div class="fig-title">بروتوكول DTP v1 يفصل بين منتجي الأحداث ومستهلكيها عبر ثلاث طبقات قياسية</div>
+      <svg viewBox="0 0 720 420" width="100%" role="img" aria-label="مخطط معماري من ثلاث طبقات يوضح كيف يربط بروتوكول DTP v1 بين المنتجين والمستهلكين">
+        <!-- Top row: Producers -->
+        <text x="360" y="24" font-family="IBM Plex Sans Arabic, sans-serif" font-size="14" font-weight="700" fill="#0F172A" text-anchor="middle">المنتجون (Producers) — أي بيئة تصدر أحداث تنفيذ</text>
+
+        <rect x="24" y="40" width="154" height="44" fill="#FFFFFF" stroke="#0F172A" stroke-width="1.5"/>
+        <text x="101" y="67" font-family="IBM Plex Sans Arabic, sans-serif" font-size="13.5" fill="#0F172A" text-anchor="middle">الطرفيات (PTY / Shell)</text>
+
+        <rect x="196" y="40" width="154" height="44" fill="#FFFFFF" stroke="#0F172A" stroke-width="1.5"/>
+        <text x="273" y="67" font-family="IBM Plex Sans Arabic, sans-serif" font-size="13.5" fill="#0F172A" text-anchor="middle">المحررات (VS Code / Zed)</text>
+
+        <rect x="368" y="40" width="154" height="44" fill="#FFFFFF" stroke="#0F172A" stroke-width="1.5"/>
+        <text x="445" y="67" font-family="IBM Plex Sans Arabic, sans-serif" font-size="13.5" fill="#0F172A" text-anchor="middle">وكلاء AI (MCP / Agents)</text>
+
+        <rect x="540" y="40" width="156" height="44" fill="#FFFFFF" stroke="#0F172A" stroke-width="1.5"/>
+        <text x="618" y="67" font-family="IBM Plex Sans Arabic, sans-serif" font-size="13.5" fill="#0F172A" text-anchor="middle">أنظمة CI (GitHub Actions)</text>
+
+        <!-- Down arrows -->
+        <line x1="101" y1="84" x2="101" y2="118" stroke="#0D9488" stroke-width="2"/>
+        <line x1="273" y1="84" x2="273" y2="118" stroke="#0D9488" stroke-width="2"/>
+        <line x1="445" y1="84" x2="445" y2="118" stroke="#0D9488" stroke-width="2"/>
+        <line x1="618" y1="84" x2="618" y2="118" stroke="#0D9488" stroke-width="2"/>
+
+        <!-- Middle Block: DTP v1 Protocol Boundary -->
+        <rect x="24" y="118" width="672" height="176" fill="#0F172A"/>
+        <text x="360" y="144" font-family="IBM Plex Mono, monospace" font-size="14" font-weight="500" fill="#5EEAD4" text-anchor="middle">DTP v1 — Open Execution &amp; Context Replay Protocol</text>
+
+        <!-- Layer 1 -->
+        <rect x="44" y="158" width="632" height="36" fill="#1E293B" stroke="#0D9488" stroke-width="1"/>
+        <text x="360" y="181" font-family="IBM Plex Sans Arabic, sans-serif" font-size="13.5" fill="#FFFFFF" text-anchor="middle">الطبقة 1 · غلاف الأحداث (Event Wire Schema): HLC Timestamps + Span IDs + Protobuf/CBOR</text>
+
+        <!-- Layer 2 -->
+        <rect x="44" y="202" width="632" height="36" fill="#1E293B" stroke="#4F46E5" stroke-width="1"/>
+        <text x="360" y="225" font-family="IBM Plex Sans Arabic, sans-serif" font-size="13.5" fill="#FFFFFF" text-anchor="middle">الطبقة 2 · حاوية التخزين (.tape Container): Content-Addressed Blobs (Blake3) + Zstd + Redaction Proof</text>
+
+        <!-- Layer 3 -->
+        <rect x="44" y="246" width="632" height="36" fill="#1E293B" stroke="#5EEAD4" stroke-width="1"/>
+        <text x="360" y="269" font-family="IBM Plex Sans Arabic, sans-serif" font-size="13.5" fill="#FFFFFF" text-anchor="middle">الطبقة 3 · واجهة البث والاستعلام (DTP-RPC &amp; MCP): Stream / Query / Diff / Safe Rewind</text>
+
+        <!-- Down arrows to consumers -->
+        <line x1="138" y1="294" x2="138" y2="334" stroke="#4F46E5" stroke-width="2"/>
+        <line x1="360" y1="294" x2="360" y2="334" stroke="#4F46E5" stroke-width="2"/>
+        <line x1="582" y1="294" x2="582" y2="334" stroke="#4F46E5" stroke-width="2"/>
+
+        <!-- Bottom row: Consumers -->
+        <rect x="24" y="334" width="212" height="44" fill="#FFFFFF" stroke="#4F46E5" stroke-width="1.5"/>
+        <text x="130" y="361" font-family="IBM Plex Sans Arabic, sans-serif" font-size="13.5" fill="#0F172A" text-anchor="middle">محرك الرجوع بالزمن (CLI / IDE)</text>
+
+        <rect x="254" y="334" width="212" height="44" fill="#FFFFFF" stroke="#4F46E5" stroke-width="1.5"/>
+        <text x="360" y="361" font-family="IBM Plex Sans Arabic, sans-serif" font-size="13.5" fill="#0F172A" text-anchor="middle">عارض الويب بدون تثبيت (WASM)</text>
+
+        <rect x="484" y="334" width="212" height="44" fill="#FFFFFF" stroke="#4F46E5" stroke-width="1.5"/>
+        <text x="590" y="361" font-family="IBM Plex Sans Arabic, sans-serif" font-size="13.5" fill="#0F172A" text-anchor="middle">وكلاء الإصلاح وتدقيق الأمان</text>
+
+        <text x="360" y="406" font-family="IBM Plex Sans Arabic, sans-serif" font-size="13.5" font-weight="700" fill="#0F172A" text-anchor="middle">المستهلكون (Consumers) — أي أداة تقرأ السجل أو تعيد بناء الحالة</text>
+      </svg>
+      <figcaption>فصل المنتجين عن المستهلكين عبر عقد DTP v1 يعني أن أي محرر أو وكيل جديد يدعم البروتوكول يحصل فوراً على التوافق مع كامل المنظومة دون بناء محوّلات مخصصة لكل أداة.</figcaption>
+    </figure>
+  </section>
+
+  <!-- SECTION 2: Deep Dive — Low-Level Systems Obstacles (Table 1) -->
+  <section class="sec">
+    <div class="measure">
+      <h2>أولاً: أعمق 5 معوقات هندسية على مستوى الأنظمة والأداء في تصميم البروتوكول</h2>
+      <p>عندما تتحول الفكرة من أداة محلية إلى بروتوكول يعتمد عليه مئات الآلاف من المطورين عبر أنظمة تشغيل مختلفة، تظهر مشاكل أنظمة موزعة (Distributed Systems) داخل الجهاز الواحد. تجاهل أي نقطة من النقاط الخمس التالية سيؤدي إلى انهيار الثقة في المعيار مبكراً.</p>
+    </div>
+
+    <div class="table-wrap">
+      <table>
+        <thead>
+          <tr>
+            <th>المعوق الهندسي العميق</th>
+            <th>الأبعاد والتأثير الحقيقي</th>
+            <th>الحل المعياري المدمج في البروتوكول (DTP v1)</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td class="lead-cell">1. السببية والترتيب الزمني بين 4 مصادر متزامنة (Causal Ordering)</td>
+            <td class="risk-cell">ساعة النظام العادية لا تكفي: قد يظهر طلب HTTP في السجل قبل طباعة الأمر الذي أطلقه بميلي ثانية، أو يفتح الوكيل 3 عمليات متوازية فيختلط السياق تماماً.</td>
+            <td class="sol-cell">اعتماد <strong>Hybrid Logical Clocks (HLC)</strong> في غلاف كل حدث، وحقن متغير بيئة قياسي <code>DTP_SPAN_ID</code> يرثه كل مسار فرعي (Child Process) مع ربط <code>parent_span_id</code> لتشكيل شجرة سببية دقيقة (Causal DAG) تربط الأمر بملفاته وطلباته.</td>
+          </tr>
+          <tr>
+            <td class="lead-cell">2. عدم الحتمية واختلاف البيئات (Non-Determinism &amp; Drift)</td>
+            <td class="risk-cell">تسجيل خطأ على macOS ARM64 وإعادة تشغيله على Linux x86_64 يفشل إذا اعتمد البروتوكول على إعادة تنفيذ الأوامر حرفياً بسبب اختلاف الحزم والشبكة والوقت.</td>
+            <td class="sol-cell">فصل صريح في المواصفة بين وضعين: <strong>State Replay</strong> (حتمي 100%؛ يعيد عرض المخرجات والفروقات وحالة الملفات فقط دون تنفيذ)، و<strong>Sandboxed Re-run</strong> (اختياري؛ يستخدم بصمة البيئة <code>env_fingerprint</code> لتشغيل الأوامر داخل حاوية معزولة ومقارنة الانحراف).</td>
+          </tr>
+          <tr>
+            <td class="lead-cell">3. انفجار حجم الملفات الثنائية واللقطات (State Explosion)</td>
+            <td class="risk-cell">تعديل ملف قاعدة بيانات SQLite محلي بحجم 80 MB أثناء التطوير 10 مرات سيجعل حجم اللقطات 800 MB إذا خُزّن الملف كاملاً في كل مرة.</td>
+            <td class="sol-cell">استخدام تقسيم المحتوى الديناميكي <strong>FastCDC (Content-Defined Chunking)</strong> بمتوسط كتلة 64 KB ومفهرسة بـ <code>blake3</code> (مثل Restic/Borg)، بحيث لا يُخزّن إلا الكتل المتغيرة فقط، مع حقل <code>blob_policy</code> في البروتوكول لتجاهل أو تلخيص الملفات الضخمة.</td>
+          </tr>
+          <tr>
+            <td class="lead-cell">4. الضغط العكسي وفيضان الأحداث (Backpressure &amp; QoS)</td>
+            <td class="risk-cell">في الأنظمة السريعة قد ينتج المطور أو الاختبار 200 MB/s من السجلات. إما أن يوقف البروتوكول الطرفية (تجربة كارثية) أو يسقط بيانات صامتاً (سجل مضلل).</td>
+            <td class="sol-cell">تعريف مستويي جودة خدمة داخل المواصفة نفسها: <code>QoS-0 (Zero-Stall)</code> للعمل التفاعلي يضمن عدم توقف الطرفية أبداً مع إدراج حدث قياسي إلزامي <code>DropMarker{bytes_dropped, range}</code>، و<code>QoS-1 (Lossless)</code> لخطوط CI والتدقيق الأمني.</td>
+          </tr>
+          <tr>
+            <td class="lead-cell">5. إثبات التنظيف الأمني كجزء من البروتوكول (Verifiable Redaction)</td>
+            <td class="risk-cell">في البروتوكولات المفتوحة لا يكفي أن «تعد» الأداة بإخفاء الأسرار؛ الشركات والمشاريع الكبرى تحتاج إثباتاً قابلاً للتحقق آلياً قبل قبول ملف <code>.tape</code> في GitHub Issue.</td>
+            <td class="sol-cell">إدراج قسم <code>redaction_attestation</code> في الـ Manifest يسجل إصدار قواعد التنظيف وعدد الحقول المنقحة، مع رمز استبدال محافظ على البنية (<code>&lt;DTP:REDACTED:AWS:a1b2&gt;</code>) يسمح بتتبع تكرار نفس المفتاح دون كشف قيمته، وإلزامية رفض التصدير إذا بقيت خريطة فك التشفير المحلية مرفقة.</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <!-- SECTION 3: Deep Dive — Protocol Adoption, Versioning & Security Obstacles (Table 2) -->
+  <section class="sec">
+    <div class="measure">
+      <h2>ثانياً: أعمق 5 معوقات معيارية وتبنيّ في السوق (كيف يتحول إلى معيار صناعي؟)</h2>
+      <p>عشرات البروتوكولات الممتازة تقنياً فشلت لأنها صُممت في برج عاجي دون خطة واقعية للتبني والتوافق الخلفي والحماية من الهجمات. هذه هي العقبات الخمس التي تفصل بين «مشروع جميل» و«بروتوكول عالمي».</p>
+    </div>
+
+    <div class="table-wrap">
+      <table>
+        <thead>
+          <tr>
+            <th>المعوق المعياري أو السوقي</th>
+            <th>لماذا يُفشل أغلب البروتوكولات الجديدة؟</th>
+            <th>الحل الاستراتيجي والتقني المعتمد</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td class="lead-cell">6. معضلة البداية الباردة (Cold-Start Adoption)</td>
+            <td class="risk-cell">لن يدمج فريق VS Code أو Cursor أو GitHub Actions بروتوكولاً لا يستخدمه أحد بعد، ولن يستخدمه المطورون إذا لم تدعمه أدواتهم.</td>
+            <td class="sol-cell">استراتيجية <strong>حصان طروادة (Trojan Horse)</strong>: أداة <code>devtape</code> تعمل بشكل مستقل ومبهر من اليوم الأول عبر الـ PTY وGit دون انتظار موافقة أي شركة، مع توفير محوّلات استيراد فورية تحول تسجيلات <code>asciinema</code> و<code>OpenTelemetry</code> وسجلات MCP إلى DTP.</td>
+          </tr>
+          <tr>
+            <td class="lead-cell">7. تطور المخطط وكسر التوافق (Schema Evolution)</td>
+            <td class="risk-cell">بمجرد انتشار ملفات <code>.tape</code> في آلاف الـ Issues، أي تغيير يكسر قراءة الملفات القديمة أو الحديثة يدمر سمعة البروتوكول.</td>
+            <td class="sol-cell">بناء المخطط على <strong>Protobuf / CBOR بأرقام حقول ثابتة</strong> لا يُعاد استخدامها أبداً، مع قاعدة إلزامية في المواصفة: <em>Unknown Event Preservation</em> (أي قارئ قديم يرى نوع حدث جديد يعرضه كبيانات خام بدلاً من الانهيار).</td>
+          </tr>
+          <tr>
+            <td class="lead-cell">8. أمن المستهلك ضد ملفات <code>.tape</code> الخبيثة</td>
+            <td class="risk-cell">مشاركة ملفات ثنائية مضغوطة في GitHub Issues تفتح باب هجمات <strong>Zstd Bombs</strong>، وحقن مسارات <code>../../etc</code>، وهجمات <strong>ANSI Escape Injection</strong> (مثل OSC 52 للعبث بالحافظة).</td>
+            <td class="sol-cell">فرض قواعد دفاع إلزامية داخل المواصفة القياسية: سقف أقصى لنسبة فك الضغط (<code>1:100</code>)، حظر المسارات المطلقة أو الخارجة عن الجذر، وفلتر <strong>ANSI Sanitizer</strong> إجباري في كل عارض يعطّل تسلسلات التحكم الخطرة أثناء إعادة العرض.</td>
+          </tr>
+          <tr>
+            <td class="lead-cell">9. الامتثال المؤسسي ومنع تسرب الكود (Enterprise Privacy)</td>
+            <td class="risk-cell">في الشركات والبنوك، يُمنع إخراج ملفات تحتوي كود المصدر الكامل حتى لو كانت خالية من كلمات المرور.</td>
+            <td class="sol-cell">دعم مستويات خصوصية قياسية داخل البروتوكول (<strong>Export Profiles</strong>): مستوى <code>Full</code> (كامل للمشاريع المفتوحة)، ومستوى <code>Diff-Only</code> (الفروقات والخطأ فقط)، ومستوى <code>Trace-Only</code> (سلسلة الأوامر والـ Stack Trace بدون أي كود مصدر).</td>
+          </tr>
+          <tr>
+            <td class="lead-cell">10. تجزؤ المعيار واحتكار الشركات (Spec Fragmentation)</td>
+            <td class="risk-cell">إذا اختلطت المواصفة بكود الأداة أو برخصة مقيدة، ستتردد الشركات الكبرى في تبني البروتوكول خوفاً من الاحتكار.</td>
+            <td class="sol-cell">فصل مستودع المواصفة <code>dtp-spec</code> (بترخيص محايد CC-BY-4.0 / Apache 2.0) عن مستودع التنفيذ <code>devtape-rs</code>، وإطلاق <strong>Conformance Test Suite</strong> آلي يتضمن 100 ملف اختبار قياسي يضمن توافق أي تطبيق بلغة أخرى.</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <!-- SECTION 4: Designing the Minimal Core vs Extensions (Asymmetric Split + Pull Quote) -->
+  <section class="sec grid-12">
+    <div class="split-left">
+      <h2>قاعدة البروتوكولات الناجحة: نواة صغيرة جداً + امتدادات اختيارية</h2>
+      <p>انظر إلى سبب نجاح <strong>LSP</strong> و<strong>MCP</strong>: النواة الأساسية يمكن لأي مهندس قراءتها وفهمها وتنفيذ عميل بسيط لها خلال عطلة نهاية أسبوع واحدة. إذا بدأت بمواصفة من 300 صفحة، لن يطبقها أحد.</p>
+    </div>
+    <div class="split-right">
+      <ul class="clean-list">
+        <li><strong>النواة الإلزامية (DTP Core — 6 أنواع أحداث فقط):</strong> <code>SessionStart</code>، <code>SpanStart/End</code>، <code>StreamChunk</code> (مخرجات/مدخلات)، <code>StateSnapshot</code> (إشارة إلى جذر Blake3)، <code>DropMarker</code>، و<code>SessionEnd</code>. أي أداة تدعم هذه الستة فقط تُعد متوافقة مع DTP Core.</li>
+        <li><strong>الامتدادات القياسية (Optional Capabilities):</strong> تُعلن عبر التفاوض في الـ Manifest مثل <code>ext.git.v1</code> و<code>ext.http.v1</code> و<code>ext.mcp.v1</code> و<code>ext.ci.v1</code>. بهذا يمكن لوكيل AI أن يدعم النواة + <code>ext.mcp.v1</code> فقط دون الحاجة لفهم تفاصيل الشبكة أو الـ PTY.</li>
+        <li><strong>مكتبة ربط واحدة للجميع (One Rust Core, 4 SDKs):</strong> بدلاً من كتابة محلل البروتوكول 4 مرات، يُبنى <code>dtp-codec</code> بلغة Rust مرة واحدة ويُصدّر عبر <code>wasm-bindgen</code> لـ TypeScript/المتصفح، وعبر <code>PyO3</code> لـ Python، وعبر C-ABI لـ Go وJava—مما يضمن تطابقاً بنسبة 100% وسرعة فائقة في كل لغة.</li>
+      </ul>
+
+      <blockquote class="pull-quote">
+        «لا تجبر العالم على استخدام أداتك—اجعل أداتك أسرع وأنظف تطبيق لبروتوكول مفتوح يستطيع الجميع البناء فوقه.»
+      </blockquote>
+    </div>
+  </section>
+
+  <!-- SIGNATURE ELEMENT: Full-Bleed Dark Band — 4-Stage Path from Tool to Global Protocol -->
+  <section class="full-band">
+    <div class="measure">
+      <h2>خارطة التحوّل من نواة Rust إلى بروتوكول عالمي مفتوح</h2>
+      <p>التسلسل الزمني مهم بقدر أهمية الكود: البروتوكول الذي يُكتب على الورق قبل وجود أداة حقيقية يفشل بالتنظير، والأداة التي لا تصمم حدودها كبروتوكول من اليوم الأول تفشل بالتوسع. هذا هو التسلسل العملي المتوازن:</p>
+    </div>
+
+    <div class="band-cols">
+      <div class="band-item">
+        <h3>1. إثبات القيمة بأداة Rust</h3>
+        <p class="band-step">الأسابيع 1–6</p>
+        <p>بناء <code>dtp-codec</code> داخلياً مع أداة <code>devtape</code> للطرفية وGit والتنظيف. اختبار النواة على مشاريع حقيقية لضبط HLC وFastCDC والأداء تحت ضغط فعلي.</p>
+      </div>
+      <div class="band-item">
+        <h3>2. استخراج المواصفة v0.1</h3>
+        <p class="band-step">الأسابيع 7–12</p>
+        <p>نشر مستودع مستقل <code>dtp-spec</code> يحتوي مسودة RFC، ومخططات Protobuf/JSON، ومجموعة <strong>Conformance Suite</strong>، وعارض WASM مجاني يقرأ أي ملف <code>.tape</code>.</p>
+      </div>
+      <div class="band-item">
+        <h3>3. جسور المنظومة والوكلاء</h3>
+        <p class="band-step">الأشهر 4–8</p>
+        <p>إطلاق حزم SDK جاهزة لـ TypeScript وPython وGo، ودمج مباشر مع MCP لوكلاء البرمجة، وGitHub Action يعمم صيغة <code>.tape</code> داخل آلاف المستودعات.</p>
+      </div>
+      <div class="band-item">
+        <h3>4. الحوكمة المحايدة (v1.0)</h3>
+        <p class="band-step">الشهر 9+</p>
+        <p>تجميد النواة <code>DTP v1.0</code> بتعهد عدم كسر التوافق، وفتح عملية RFC مجتمعية، ودعوة مطوري المحررات وأدوات الـ CI للمشاركة في لجنة توجيه مفتوحة.</p>
+      </div>
+    </div>
+  </section>
+
+</main>
+</body>
+</html>

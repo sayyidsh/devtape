@@ -1,0 +1,15 @@
+[package]
+name = "devtape-cli"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[[bin]]
+name = "devtape"
+path = "src/main.rs"
+
+[dependencies]
+clap.workspace = true
+devtape-scrub = { path = "../devtape-scrub" }
+dtp-codec = { path = "../dtp-codec" }
+serde_json.workspace = true
