@@ -24,6 +24,12 @@ struct Cli {
 
 #[derive(Subcommand)]
 enum Commands {
+    /// View a tape in a local read-only browser.
+    View {
+        path: PathBuf,
+        #[arg(long, default_value_t = 0)]
+        port: u16,
+    },
     /// Serve read-only MCP tools for a tape over stdio.
     Mcp {
         #[arg(long)]
@@ -135,6 +141,12 @@ fn open_store(
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let cli = Cli::parse();
     match cli.command {
+        Commands::View { path, port } => {
+            let archive = TapeArchive::decode(&fs::read(path)?)?;
+            let viewer = devtape_ui::Viewer::bind(port, archive).await?;
+            println!("http://{}", viewer.local_addr()?);
+            viewer.serve().await?;
+        }
         Commands::Mcp { tape } => {
             let archive = TapeArchive::decode(&fs::read(tape)?)?;
             devtape_mcp::serve(&archive, io::stdin().lock(), io::stdout().lock())?;

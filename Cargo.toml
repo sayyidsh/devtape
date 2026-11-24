@@ -9,6 +9,8 @@ members = [
     "crates/devtape-cli",
     "crates/devtape-mcp",
     "crates/devtape-net",
+    "crates/devtape-ui",
+    "crates/dtp-wasm",
 ]
 
 [workspace.package]

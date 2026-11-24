@@ -1,0 +1,9 @@
+[package]
+name = "dtp-wasm"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+dtp-codec = { path = "../dtp-codec" }
+serde_json.workspace = true

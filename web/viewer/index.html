@@ -1,0 +1,75 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>DevTape Viewer</title>
+<style>
+:root{color-scheme:dark;--bg:#10151d;--panel:#18212c;--text:#e8eef3;--muted:#9babb9;--accent:#7dd9c8}*{box-sizing:border-box}body{font:15px system-ui,sans-serif;background:var(--bg);color:var(--text);margin:0}main{max-width:1100px;margin:auto;padding:28px}header{display:flex;align-items:center;justify-content:space-between;gap:1rem}h1{font-size:24px;margin:0}h2{font-size:17px}.badge{color:var(--muted);font-size:12px}section{background:var(--panel);padding:18px;border-radius:12px;margin:16px 0}#dropzone{border:1px dashed #708592;text-align:center}#dropzone.active{border-color:var(--accent)}button,input{font:inherit;color:inherit;background:#202e3a;border:1px solid #526474;border-radius:6px;padding:8px}button{cursor:pointer}button[aria-pressed=true]{background:#27675e;border-color:var(--accent)}.filters{display:flex;flex-wrap:wrap;gap:6px}.search{width:100%;margin:12px 0}pre{white-space:pre-wrap;overflow-wrap:anywhere;margin:0;font:13px ui-monospace,monospace}article{padding:12px 0;border-top:1px solid #344452}#message{color:#ffcc8a;white-space:pre-wrap}label{color:var(--muted)}input[type=range]{width:100%;padding:0}a{color:var(--accent)}
+</style>
+</head>
+<body><main>
+<header><h1>DevTape Timeline</h1><span class="badge">Recorded with DevTape</span></header>
+<section id="dropzone"><p>Drop a .tape or JSON archive here, or choose a file.</p><input id="file" type="file" accept=".tape,.json,application/json"></section>
+<p id="message" role="status"></p>
+<section><h2>Manifest &amp; Redaction Attestation</h2><pre id="manifest">Open a recording to begin.</pre></section>
+<section><h2>Timeline</h2><div class="filters" id="filters">
+<button type="button" aria-pressed="true">All</button><button type="button" aria-pressed="false">Failures</button><button type="button" aria-pressed="false">Stdout</button><button type="button" aria-pressed="false">Stdin</button><button type="button" aria-pressed="false">Git</button><button type="button" aria-pressed="false">HTTP</button><button type="button" aria-pressed="false">DropMarkers</button>
+</div><input class="search" id="search" type="search" placeholder="Search events and streams" aria-label="Search events and streams"><label for="timeline">Show events through <span id="position">0</span></label><input id="timeline" type="range" min="0" max="0" value="0"><div id="events"></div></section>
+</main><script>
+'use strict';
+const byId = id => document.getElementById(id);
+let archive = null, active = 'All';
+function showError(error) { byId('message').textContent = String(error); }
+function present(data) {
+  if (!data || !data.manifest || !Array.isArray(data.events)) throw new Error('Invalid archive JSON');
+  archive = data; const m = data.manifest, r = m.redaction || {};
+  const summary = {session_id:m.session_id,spec_version:m.spec_version,os:m.os,arch:m.arch,shell:m.shell,qos_mode:m.qos_mode,export_profile:m.export_profile,extensions:m.extensions,redaction:{ruleset_version:r.ruleset_version,redacted_count:r.redacted_count,local_map_excluded:r.local_map_excluded},integrity_blake3:data.integrity_blake3};
+  byId('manifest').textContent = JSON.stringify(summary, null, 2);
+  byId('timeline').max = String(data.events.length); byId('timeline').value = String(data.events.length);
+  byId('message').textContent = 'The integrity hash identifies the original tape; displayed streams are sanitized.'; render();
+}
+function matches(item) {
+ const e=item.event || {}; switch(active) {
+  case 'Failures': return e.type === 'span_end' && e.exit_code !== 0;
+  case 'Stdout': return e.type === 'stream_chunk' && e.channel === 'stdout';
+  case 'Stdin': return e.type === 'stream_chunk' && e.channel === 'stdin';
+  case 'Git': return e.extension_id === 'ext.git.v1' || e.type === 'state_snapshot';
+  case 'HTTP': return e.extension_id === 'ext.http.v1';
+  case 'DropMarkers': return e.type === 'drop_marker';
+  default: return true;
+ }
+}
+function render() {
+ const root=byId('events'); root.replaceChildren(); if (!archive) return;
+ const max=Number(byId('timeline').value), query=byId('search').value.toLocaleLowerCase(); byId('position').textContent=String(max);
+ for (const item of archive.events.slice(0,max)) {
+  const text=JSON.stringify(item,null,2); if (!matches(item) || !text.toLocaleLowerCase().includes(query)) continue;
+  const article=document.createElement('article'), pre=document.createElement('pre'); pre.textContent=text; article.appendChild(pre); root.appendChild(article);
+ }
+}
+for (const button of byId('filters').querySelectorAll('button')) button.addEventListener('click',()=>{active=button.textContent;for(const b of byId('filters').querySelectorAll('button')) b.setAttribute('aria-pressed',String(b===button));render();});
+byId('search').addEventListener('input',render); byId('timeline').addEventListener('input',render);
+async function openFile(file) {
+ try {
+  if (!file) return;
+  if (file.name.toLowerCase().endsWith('.json')) { present(JSON.parse(await file.text())); return; }
+  const bytes=new Uint8Array(await file.arrayBuffer());
+  if (bytes.length<16 || new TextDecoder().decode(bytes.slice(0,6))!=='DTAP01') throw new Error('Invalid DTAP01 header');
+  if (typeof window.decode_and_sanitize_tape_json === 'function') { present(JSON.parse(await window.decode_and_sanitize_tape_json(bytes))); return; }
+  const version=(bytes[6]<<8)|bytes[7]; if(version!==1) throw new Error('Unsupported tape version: '+version);
+  const size=new DataView(bytes.buffer,bytes.byteOffset,bytes.byteLength).getBigUint64(8,false); if(size>268435456n || size>BigInt(bytes.length-16)*100n) throw new Error('Tape exceeds decompression limits');
+  if(typeof DecompressionStream==='undefined') throw new Error('A compatible Zstandard decoder or WASM hook is required for .tape files.');
+  let decoder; try {decoder=new DecompressionStream('zstd');} catch (_) {throw new Error('This browser lacks Zstandard support. Load a compatible WASM decoder hook or use devtape view.');}
+  const stream=new Blob([bytes.slice(16)]).stream().pipeThrough(decoder); const reader=stream.getReader(); let chunks=[], total=0;
+  for(;;) {const {done,value}=await reader.read();if(done)break;total+=value.length;if(BigInt(total)>size){await reader.cancel();throw new Error('Unexpected decompressed size');}chunks.push(value);}
+  if(BigInt(total)!==size) throw new Error('Unexpected decompressed size');
+  present(JSON.parse(await new Blob(chunks).text()));
+  showError('Browser decoding does not verify the tape integrity hash. Use devtape view for verified decoding.');
+ } catch(e) {showError(e.message || e);}
+}
+byId('file').addEventListener('change',e=>openFile(e.target.files[0]));
+const drop=byId('dropzone'); for(const name of ['dragenter','dragover']) drop.addEventListener(name,e=>{e.preventDefault();drop.classList.add('active');});
+for(const name of ['dragleave','drop']) drop.addEventListener(name,e=>{e.preventDefault();drop.classList.remove('active');});
+drop.addEventListener('drop',e=>openFile(e.dataTransfer.files[0]));
+if(location.protocol==='http:' || location.protocol==='https:') fetch('/api/tape').then(r=>{if(!r.ok)throw new Error('No tape loaded');return r.json();}).then(present).catch(()=>{});
+</script></body></html>

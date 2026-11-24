@@ -1,32 +1,59 @@
-# DevTape & DTP v0.1 (Open Execution & Context Replay Protocol)
+# DevTape & DTP v0.1
 
-**DevTape** is the reference Rust implementation of the **DevTape Protocol (DTP v0.1)** — an open, local-first protocol for capturing, scrubbing, rewinding, and replaying developer and AI-agent execution sessions in a single portable `.tape` container.
+DevTape is a local-first Rust implementation of the DevTape Protocol for recording, scrubbing, inspecting, and replaying development sessions in portable `.tape` archives. The protocol is specified in `spec/RFC-0001-dtp-v0.1.md` and `spec/dtp_v1.proto`.
 
-## Repository Layout
+Recording uses a PTY with bounded buffering and streaming redaction; archives carry events, a manifest, and an integrity hash. Sessions can be stored in SQLite, exported by privacy profile, inspected through read-only MCP tools, or viewed locally. Git snapshots use a private index, and rewind first creates a safety snapshot.
 
-- `spec/RFC-0001-dtp-v0.1.md` — Normative DTP v0.1 protocol specification (HLC causality, `.tape` container, security rules, export profiles).
-- `spec/dtp_v1.proto` — Canonical Protocol Buffers v3 wire schema with fixed field tags.
-- `crates/dtp-codec/` — Core Rust codec (HLC clock, event envelope, `.tape` container reader/writer with 1:100 decompression bomb guard).
-- `crates/devtape-scrub/` — Streaming secret scrubber with sliding-window overlap and deterministic structural placeholders.
-- `crates/devtape-cli/` — Reference CLI (`devtape`) wired to `dtp-codec` and `devtape-scrub`.
-- `.github/workflows/ci.yml` — Cross-platform CI matrix (Linux, macOS, Windows).
+## Crates
 
-## Quickstart
+- `dtp-codec`: tape encoding, validation, HLC, event types and replay ANSI filtering.
+- `devtape-scrub`: streaming secret scrubbing.
+- `devtape-pty`: PTY capture and backpressure.
+- `devtape-git`: shadow snapshots, rewind and undo.
+- `devtape-core`: SQLite session store and export profiles.
+- `devtape-mcp`: read-only MCP stdio tools.
+- `devtape-net`: opt-in loopback HTTP capture proxy.
+- `devtape-ui`: loopback read-only timeline server.
+- `dtp-wasm`: Rust decoding and viewer sanitization helper.
+- `devtape-cli`: command-line interface.
 
-Requires Rust 1.80+:
+## Usage
 
-```bash
-# Run all unit tests across the workspace (HLC, .tape codec, bomb guard, sliding-window scrubber)
-cargo test --workspace
+Run with `cargo run -p devtape-cli --`, or build and use the `devtape` binary. Examples below assume the binary is on `PATH`.
 
-# Create a sample DTP v0.1 .tape file and inspect its manifest & events
-cargo run -p devtape-cli -- demo-tape --out sample.tape
-cargo run -p devtape-cli -- inspect sample.tape
-
-# Test the sliding-window secret scrubber on a file or stdin
-echo "export OPENAI_API_KEY=sk-proj-abc12345678901234567890" | cargo run -p devtape-cli -- scrub-check
+```sh
+devtape doctor
+devtape demo-tape --out sample.tape
+devtape inspect sample.tape
+devtape record --out session.tape --qos zero-stall --db sessions.db -- sh -c 'echo hello'
+devtape record --net --out network.tape -- curl http://example.com/
+devtape snapshot --repo . --label before-change
+devtape rewind --repo . --to SNAPSHOT_ID
+devtape undo-rewind --repo .
+devtape sessions --db sessions.db
+devtape export SESSION_ID --db sessions.db --profile full --review --out exported.tape
+devtape export SESSION_ID --db sessions.db --profile diff-only --review --out diff.tape
+devtape export SESSION_ID --db sessions.db --profile trace-only --review --out trace.tape
+devtape view session.tape --port 0
+devtape mcp --tape session.tape
+printf 'Bearer example-token\n' | devtape scrub-check
 ```
+
+`view` prints a loopback URL and runs until interrupted. It sanitizes dangerous terminal control sequences for display; its displayed integrity hash is that of the original archive. Archives should already have been scrubbed before sharing. `web/viewer/index.html` can display JSON locally and can decode `.tape` files when the browser supports Zstandard or a compatible `decode_and_sanitize_tape_json` JavaScript hook is supplied. Browser-native decoding does not verify the tape integrity hash. The `dtp-wasm` crate currently provides Rust functions; no browser binding or compiled WASM artifact is included.
+
+`--net` captures plain HTTP; HTTPS CONNECT and chunked request bodies are currently unsupported. The proxy configures the child environment only and does not install a system CA.
+
+The workspace declares Rust 1.80, but the currently locked `time` dependency requires Rust 1.88; use a compatible toolchain until that mismatch is resolved.
+
+## Verification
+
+```sh
+CARGO_INCREMENTAL=0 cargo test --workspace
+CARGO_INCREMENTAL=0 cargo clippy --workspace --all-targets -- -D warnings
+```
+
+Some integration tests require permission to bind loopback sockets.
 
 ## License
 
-Dual-licensed / Apache-2.0. The protocol specification in `spec/` is open and vendor-neutral.
+Apache-2.0. The protocol specification is open and vendor-neutral.

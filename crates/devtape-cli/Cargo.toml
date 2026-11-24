@@ -10,6 +10,7 @@ path = "src/main.rs"
 
 [dependencies]
 clap.workspace = true
+devtape-ui = { path = "../devtape-ui" }
 devtape-net = { path = "../devtape-net" }
 devtape-mcp = { path = "../devtape-mcp" }
 devtape-pty = { path = "../devtape-pty" }
