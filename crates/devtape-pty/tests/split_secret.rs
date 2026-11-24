@@ -1,7 +1,7 @@
+#![cfg(unix)]
 use devtape_pty::{PtyRecorder, RecordConfig};
 use dtp_codec::{CoreEvent, StreamChannel};
 
-#[cfg(unix)]
 #[tokio::test]
 async fn split_pty_output_is_redacted_and_attested() {
     let outcome = PtyRecorder::record(RecordConfig {

@@ -70,19 +70,15 @@ fn cli_snapshot_rewind_and_undo() {
     assert_eq!(index, fs::read(dir.join(".git/index")).unwrap());
     assert_eq!(head, git(&dir, &["log", "--format=%H"]));
     let tape = dir.join("recorded.tape");
-    let run = Command::new(env!("CARGO_BIN_EXE_devtape"))
-        .current_dir(&dir)
-        .args([
-            "record",
-            "--out",
-            tape.to_str().unwrap(),
-            "--",
-            "sh",
-            "-c",
-            "printf recorded",
-        ])
-        .output()
-        .unwrap();
+    let mut cmd = Command::new(env!("CARGO_BIN_EXE_devtape"));
+    cmd.current_dir(&dir)
+        .args(["record", "--out", tape.to_str().unwrap(), "--"]);
+    if cfg!(windows) {
+        cmd.args(["cmd.exe", "/C", "echo recorded"]);
+    } else {
+        cmd.args(["sh", "-c", "printf recorded"]);
+    }
+    let run = cmd.output().unwrap();
     assert!(
         run.status.success(),
         "{}",
