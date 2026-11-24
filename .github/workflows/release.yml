@@ -1,0 +1,103 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    name: Build (${{ matrix.target }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - target: x86_64-unknown-linux-gnu
+            os: ubuntu-latest
+            bin: devtape
+            asset: devtape-x86_64-unknown-linux-gnu.tar.gz
+          - target: aarch64-apple-darwin
+            os: macos-14
+            bin: devtape
+            asset: devtape-aarch64-apple-darwin.tar.gz
+          - target: x86_64-apple-darwin
+            os: macos-13
+            bin: devtape
+            asset: devtape-x86_64-apple-darwin.tar.gz
+          - target: x86_64-pc-windows-msvc
+            os: windows-latest
+            bin: devtape.exe
+            asset: devtape-x86_64-pc-windows-msvc.zip
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.target }}
+
+      - name: Run workspace test suite
+        run: CARGO_INCREMENTAL=0 cargo test --workspace --target ${{ matrix.target }}
+
+      - name: Build stripped release binary
+        run: CARGO_INCREMENTAL=0 cargo build --release -p devtape-cli --target ${{ matrix.target }}
+
+      - name: Enforce < 15 MB release binary budget (Unix)
+        if: runner.os != 'Windows'
+        shell: bash
+        run: |
+          BIN="target/${{ matrix.target }}/release/${{ matrix.bin }}"
+          SIZE=$(wc -c < "$BIN" | tr -d ' ')
+          echo "Release binary size: ${SIZE} bytes"
+          if [ "$SIZE" -ge 15728640 ]; then
+            echo "Error: release binary exceeds 15 MiB budget (${SIZE} bytes)"
+            exit 1
+          fi
+          tar -czf "${{ matrix.asset }}" -C "target/${{ matrix.target }}/release" "${{ matrix.bin }}"
+          shasum -a 256 "${{ matrix.asset }}" > "${{ matrix.asset }}.sha256"
+
+      - name: Enforce < 15 MB release binary budget (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $bin = "target/${{ matrix.target }}/release/${{ matrix.bin }}"
+          $size = (Get-Item $bin).Length
+          Write-Host "Release binary size: $size bytes"
+          if ($size -ge 15728640) {
+            throw "Release binary exceeds 15 MiB budget ($size bytes)"
+          }
+          Compress-Archive -Path $bin -DestinationPath "${{ matrix.asset }}"
+          $hash = (Get-FileHash "${{ matrix.asset }}" -Algorithm SHA256).Hash.ToLower()
+          "$hash  ${{ matrix.asset }}" | Out-File -Encoding ascii "${{ matrix.asset }}.sha256"
+
+      - name: Upload release artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: release-${{ matrix.target }}
+          path: |
+            ${{ matrix.asset }}
+            ${{ matrix.asset }}.sha256
+
+  publish:
+    name: Publish GitHub Release
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: dist
+          merge-multiple: true
+
+      - name: Create GitHub Release and attach binaries
+        uses: softprops/action-gh-release@v2
+        with:
+          generate_release_notes: true
+          files: |
+            dist/*

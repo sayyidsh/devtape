@@ -1,0 +1,72 @@
+# Contributing to DevTape & DTP v0.1
+
+Thank you for contributing to **DevTape**, the reference Rust implementation of the **DevTape Protocol (DTP v0.1)**.
+
+DevTape is designed as a **protocol first** (`spec/RFC-0001-dtp-v0.1.md` and `spec/dtp_v1.proto`). Contributions that improve cross-platform fidelity, security hardening, performance budgets, or ecosystem extensions are especially welcome.
+
+---
+
+## Core Engineering Rules
+
+1. **Zero Unsafe Rust:** Every crate in the workspace enforces `#![forbid(unsafe_code)]`.
+2. **Protocol First:** Keep the 7 mandatory DTP Core events minimal and stable. Put domain-specific signals behind versioned capability extensions (`ext.git.v1`, `ext.http.v1`, `ext.mcp.v1`, `ext.ci.v1`).
+3. **Hard Performance Budgets:**
+   - **PTY passthrough latency:** `< 2 ms` (never block terminal I/O on disk, secret scrubbing, or SQLite).
+   - **Active RAM footprint:** `~32 MB` core (`~40 MB` with `--net` enabled); `0 MB` idle for UI/MCP.
+   - **Release binary size:** `< 15 MB` stripped (`opt-level = "z"`, `lto = "thin"`, `strip = true`).
+4. **Defensive Consumer Parsing:** Any `.tape` reader or viewer must enforce the 1:100 decompression-bomb guard (`256 MiB` ceiling), reject path traversal (`..`, leading `/`, drive letters, null bytes), strip dangerous terminal control sequences (`OSC 52` clipboard writes, window-title overrides), and render untrusted fields without `innerHTML`.
+
+---
+
+## Running the Verification Suite
+
+Before opening a pull request, run the full verification gate:
+
+```bash
+# 1. Check formatting across all 10 workspace crates
+CARGO_INCREMENTAL=0 cargo fmt --all -- --check
+
+# 2. Lint all targets with warnings treated as errors
+CARGO_INCREMENTAL=0 cargo clippy --workspace --all-targets -- -D warnings
+
+# 3. Run all 42 unit, property, conformance, and subprocess integration tests
+CARGO_INCREMENTAL=0 cargo test --workspace
+
+# 4. Verify benchmark targets compile cleanly
+CARGO_INCREMENTAL=0 cargo bench --workspace --no-run
+
+# 5. Build and verify the stripped release binary size (< 15 MB budget)
+CARGO_INCREMENTAL=0 cargo build --release -p devtape-cli
+ls -lh target/release/devtape
+```
+
+### Conformance Vectors & Benchmarks
+
+- **Golden Conformance Vectors:** Located in `spec/conformance/` and validated by `crates/dtp-codec/tests/conformance_vectors.rs`. Any change to `dtp-codec` must preserve backward compatibility with all golden `.tape` vectors.
+- **Property Tests:** `crates/dtp-codec/tests/prop_codec.rs` and `crates/devtape-scrub/tests/prop_scrubber.rs` test arbitrary chunk splits, malformed headers, and truncated streams.
+- **Microbenchmarks:** Run `cargo bench -p dtp-codec` and `cargo bench -p devtape-scrub` to measure codec throughput and sliding-window redaction latency.
+
+---
+
+## Good First Issues & v0.2 Roadmap
+
+Looking for a place to start? Here are high-impact areas ready for contributions:
+
+1. **HTTPS `CONNECT` MITM Termination in `devtape-net` (`v0.2`):**
+   - `devtape-net` already generates an ephemeral per-session CA certificate via `rcgen` and injects `SSL_CERT_FILE`, `NODE_EXTRA_CA_CERTS`, and `REQUESTS_CA_BUNDLE` solely into the child PTY environment.
+   - Next step: handle `CONNECT host:443` for loopback/dev targets by dynamically minting per-host leaf certificates signed by the session CA and terminating TLS with `tokio-rustls`.
+2. **Chunked Request Body Capture (`Transfer-Encoding: chunked`):**
+   - Extend `crates/devtape-net` to stream and decode chunked HTTP request bodies while preserving the `1 MiB` (`MAX_CAPTURED_BODY_BYTES`) truncation cap and 256-byte tail boundary guard.
+3. **CI Runner Extension (`ext.ci.v1`):**
+   - Detect common CI environments (GitHub Actions, GitLab CI, Buildkite) during `devtape record` and emit structured `ext.ci.v1` metadata (workflow, job, runner OS, failing test summary).
+4. **Browser WASM Bindings (`crates/dtp-wasm`):**
+   - Add an optional `wasm32-unknown-unknown` export target compiling `dtp_wasm::decode_and_sanitize_tape_json` into a standalone `.wasm` bundle for `web/viewer/index.html` so browsers without native `DecompressionStream('zstd')` can verify Blake3 integrity hashes client-side.
+5. **Custom Scrubber Rulesets:**
+   - Support user-defined redaction patterns via `.devtape/scrub.toml` while recording the custom ruleset hash in `RedactionAttestation`.
+
+---
+
+## Submitting Changes
+
+- Keep pull requests focused on a single crate or capability.
+- Attach a `.tape` reproduction or session trace (`devtape export <SESSION_ID> --profile diff-only --review --out pr-check.tape`) when fixing bugs or demonstrating new CLI behavior.
