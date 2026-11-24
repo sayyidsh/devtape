@@ -193,17 +193,22 @@ impl PtyProducer {
         match self.qos_mode {
             QosMode::ZeroStall => {
                 // Attempt to reserve `len` bytes within `max_buffer_bytes`.
-                let reserved = self
-                    .queued_bytes
-                    .fetch_update(Ordering::SeqCst, Ordering::SeqCst, |current| {
-                        let next = current.saturating_add(len);
-                        if next <= self.max_buffer_bytes {
-                            Some(next)
-                        } else {
-                            None
-                        }
-                    })
-                    .is_ok();
+                let mut current = self.queued_bytes.load(Ordering::SeqCst);
+                let reserved = loop {
+                    let next = current.saturating_add(len);
+                    if next > self.max_buffer_bytes {
+                        break false;
+                    }
+                    match self.queued_bytes.compare_exchange_weak(
+                        current,
+                        next,
+                        Ordering::SeqCst,
+                        Ordering::SeqCst,
+                    ) {
+                        Ok(_) => break true,
+                        Err(actual) => current = actual,
+                    }
+                };
 
                 if !reserved {
                     self.pending_dropped_bytes
