@@ -46,3 +46,24 @@ jobs:
           printf '{"type":"module"}\n' > web/viewer/pkg/package.json
           cargo run --locked -p dtp-wasm --example browser_fixture -- target/browser-test.tape
           node scripts/test-wasm.mjs web/viewer/pkg/dtp_wasm.js
+
+  action-smoke:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Run local DevTape action against a failing command
+        id: smoke
+        continue-on-error: true
+        uses: ./
+        with:
+          command: |
+            echo "Deploying with token ghp_A1b2C3d4E5f6G7h8I9j0K1l2M3n4O5p6Q7r8"
+            exit 42
+          artifact_name: devtape-smoke-tape
+      - name: Verify devtape-ci.tape artifact and redaction
+        run: |
+          test "${{ steps.smoke.outcome }}" = "failure"
+          test "${{ steps.smoke.outputs.exit_code }}" = "42"
+          test -s devtape-ci.tape
+          devtape inspect devtape-ci.tape | grep -q '"ext.ci.v1"'
+          ! devtape inspect devtape-ci.tape | grep -q 'ghp_A1b2C3d4E5f6G7h8I9j0K1l2M3n4O5p6Q7r8'

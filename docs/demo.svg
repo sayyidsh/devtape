@@ -1,0 +1,150 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 920 500" width="920" height="500" role="img" aria-label="DevTape Terminal Demo: Record with secret redaction, Rewind with pre-rewind safety backup, and View timeline">
+  <style>
+    .bg { fill: #0b0f17; }
+    .panel { fill: #111827; stroke: #243247; stroke-width: 1.5; }
+    .header { fill: #182235; }
+    .divider { stroke: #243247; stroke-width: 1; }
+    .mono { font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace; font-size: 13px; }
+    .title { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; font-size: 13px; font-weight: 600; fill: #9fb0c7; }
+    .badge { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 11px; font-weight: 600; }
+    .prompt { fill: #7dd9c8; font-weight: 700; }
+    .cmd { fill: #f0f6fc; font-weight: 600; }
+    .out { fill: #9fb0c7; }
+    .ok { fill: #34d399; font-weight: 600; }
+    .warn { fill: #fbbf24; font-weight: 600; }
+    .err { fill: #f87171; font-weight: 600; }
+    .dim { fill: #64748b; }
+    .accent { fill: #38bdf8; }
+
+    @keyframes step1 {
+      0%, 4% { opacity: 0; }
+      8%, 94% { opacity: 1; }
+      98%, 100% { opacity: 0; }
+    }
+    @keyframes step1out {
+      0%, 14% { opacity: 0; }
+      18%, 94% { opacity: 1; }
+      98%, 100% { opacity: 0; }
+    }
+    @keyframes step2 {
+      0%, 34% { opacity: 0; }
+      38%, 94% { opacity: 1; }
+      98%, 100% { opacity: 0; }
+    }
+    @keyframes step2out {
+      0%, 44% { opacity: 0; }
+      48%, 94% { opacity: 1; }
+      98%, 100% { opacity: 0; }
+    }
+    @keyframes step3 {
+      0%, 64% { opacity: 0; }
+      68%, 94% { opacity: 1; }
+      98%, 100% { opacity: 0; }
+    }
+    @keyframes step3out {
+      0%, 74% { opacity: 0; }
+      78%, 94% { opacity: 1; }
+      98%, 100% { opacity: 0; }
+    }
+    @keyframes progress {
+      0% { width: 0px; }
+      95% { width: 880px; }
+      100% { width: 880px; }
+    }
+
+    .s1 { animation: step1 15s infinite; }
+    .s1o { animation: step1out 15s infinite; }
+    .s2 { animation: step2 15s infinite; }
+    .s2o { animation: step2out 15s infinite; }
+    .s3 { animation: step3 15s infinite; }
+    .s3o { animation: step3out 15s infinite; }
+    .bar { animation: progress 15s linear infinite; }
+  </style>
+
+  <!-- Outer Canvas -->
+  <rect class="bg" x="0" y="0" width="920" height="500" rx="14" />
+  <rect class="panel" x="16" y="16" width="888" height="468" rx="10" />
+
+  <!-- Window Header -->
+  <path class="header" d="M17 26 a9 9 0 0 1 9 -9 h868 a9 9 0 0 1 9 9 v28 h-886 z" />
+  <line class="divider" x1="16" y1="54" x2="904" y2="54" />
+  <circle cx="38" cy="35" r="6" fill="#ef4444" />
+  <circle cx="58" cy="35" r="6" fill="#f59e0b" />
+  <circle cx="78" cy="35" r="6" fill="#10b981" />
+  <text class="title" x="460" y="40" text-anchor="middle">devtape v0.2.0 — DTP v0.1 (Record → Scrub → Rewind → View)</text>
+
+  <!-- Status Pills in Header -->
+  <rect x="748" y="24" width="140" height="22" rx="11" fill="#0f292e" stroke="#2dd4bf" stroke-width="1" />
+  <text class="badge" x="818" y="39" fill="#5eead4" text-anchor="middle">DTAP01 • Blake3</text>
+
+  <!-- Step 1: Record & Scrub -->
+  <g class="s1">
+    <text class="mono" x="36" y="86">
+      <tspan class="prompt">❯</tspan>
+      <tspan class="cmd"> devtape record --out session.tape --db sessions.db -- sh -c 'cargo test'</tspan>
+    </text>
+  </g>
+  <g class="s1o">
+    <text class="mono out" x="36" y="110">Authorization: Bearer ghp_A1b2C3d4E5f6G7h8I9j0K1l2M3n4O5p6Q7r8</text>
+    <text class="mono err" x="36" y="132">test calculate_fee ... FAILED</text>
+    <text class="mono ok" x="36" y="156">[devtape] recorded 7 events to session.tape (1008 B zstd, 2 secrets scrubbed, 0 B dropped)</text>
+    <rect x="36" y="168" width="848" height="54" rx="6" fill="#161f30" stroke="#2d3f5e" stroke-width="1" />
+    <text class="mono" x="50" y="190">
+      <tspan class="dim">stream_chunk (seq #3):</tspan>
+      <tspan class="out"> "Authorization: Bearer </tspan>
+      <tspan class="warn">&lt;DTP:REDACTED:GITHUB_TOKEN:f4e48c&gt;</tspan>
+      <tspan class="out">"</tspan>
+    </text>
+    <text class="mono" x="50" y="211">
+      <tspan class="dim">ext.git.v1   (seq #6):</tspan>
+      <tspan class="accent"> snapshot_id="99562-1795558338307403000-1"</tspan>
+      <tspan class="dim"> git_tree_oid="07a09b4bd81f"</tspan>
+    </text>
+  </g>
+
+  <!-- Step 2: Rewind with Pre-Rewind Safety Snapshot -->
+  <g class="s2">
+    <text class="mono" x="36" y="256">
+      <tspan class="prompt">❯</tspan>
+      <tspan class="cmd"> devtape rewind --repo . --to 99562-1795558338307403000-1</tspan>
+    </text>
+  </g>
+  <g class="s2o">
+    <rect x="36" y="270" width="848" height="72" rx="6" fill="#161f30" stroke="#2d3f5e" stroke-width="1" />
+    <text class="mono" x="50" y="292">
+      <tspan class="ok">✔ Created automatic pre-rewind backup:</tspan>
+      <tspan class="accent"> 99851-1795558338427717000-1</tspan>
+      <tspan class="dim"> (undo with `devtape undo-rewind`)</tspan>
+    </text>
+    <text class="mono" x="50" y="313">
+      <tspan class="out">{"target": {"snapshot_id": "99562-1795558338307403000-1", "git_tree_oid": "07a09b4bd81f05fd...",</tspan>
+    </text>
+    <text class="mono" x="50" y="332">
+      <tspan class="out">            "tree_blake3": "023c03f780e2eebf...", "changed_files": ["lib.rs"]}}</tspan>
+    </text>
+  </g>
+
+  <!-- Step 3: View Timeline & MCP -->
+  <g class="s3">
+    <text class="mono" x="36" y="376">
+      <tspan class="prompt">❯</tspan>
+      <tspan class="cmd"> devtape view session.tape --port 0</tspan>
+    </text>
+  </g>
+  <g class="s3o">
+    <text class="mono ok" x="36" y="400">http://127.0.0.1:54128</text>
+    <text class="mono" x="36" y="424">
+      <tspan class="dim">• Loopback-only timeline UI + WASM viewer:</tspan>
+      <tspan class="accent"> https://sayyidsh.github.io/devtape/</tspan>
+    </text>
+    <text class="mono" x="36" y="446">
+      <tspan class="dim">• Integrity Blake3:</tspan>
+      <tspan class="out"> 4aa092335021c9ffaf37067aa80873b45408f92cb2091eff508341bc3a92b73c</tspan>
+      <tspan class="ok"> (VERIFIED)</tspan>
+    </text>
+  </g>
+
+  <!-- Progress Bar -->
+  <rect x="20" y="476" width="880" height="4" rx="2" fill="#1e293b" />
+  <rect class="bar" x="20" y="476" width="880" height="4" rx="2" fill="#2dd4bf" />
+</svg>

@@ -9,16 +9,18 @@
 
 - **Try the Zero-Install Timeline Viewer (with WASM `.tape` decoder):** **[https://sayyidsh.github.io/devtape/](https://sayyidsh.github.io/devtape/)** *(drag-and-drop any `.tape` file or click **"Load Sample Failing Tape"** to scrub through a demo session immediately in your browser)*
 
+![DevTape Terminal Demo — Record, Scrub, Rewind, View](docs/demo.svg)
+
 ---
 
 ## Install
 
 ```sh
-# Install from source via Cargo
-cargo install --git https://github.com/sayyidsh/devtape devtape-cli
+# Install via Homebrew Tap (macOS Apple Silicon / Intel & Linux prebuilt tarballs)
+brew install sayyidsh/tap/devtape
 
-# Or install via Homebrew (macOS Apple Silicon / Intel & Linux prebuilt tarballs)
-brew install --formula https://raw.githubusercontent.com/sayyidsh/devtape/main/Formula/devtape.rb
+# Or install from source via Cargo
+cargo install --git https://github.com/sayyidsh/devtape devtape-cli
 
 # Or download the prebuilt macOS Apple Silicon binary directly from GitHub Releases
 curl -fsSL https://github.com/sayyidsh/devtape/releases/download/v0.2.0/devtape-aarch64-apple-darwin.tar.gz | tar -xz && chmod +x devtape
