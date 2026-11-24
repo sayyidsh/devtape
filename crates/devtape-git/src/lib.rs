@@ -278,7 +278,11 @@ fn store_chunks(repo: &Repo, data: &[u8]) -> Result<(), GitError> {
 }
 fn snapshot(repo: &Repo, label: Option<&str>, pre: bool) -> Result<ShadowSnapshot, GitError> {
     let index = temp_index(repo, true)?;
-    git(&repo.root, &["add", "-A", "--", "."], Some(&index.0))?;
+    git(
+        &repo.root,
+        &["-c", "core.autocrlf=false", "add", "-A", "--", "."],
+        Some(&index.0),
+    )?;
     let oid = text(git(&repo.root, &["write-tree"], Some(&index.0))?)?;
     let entries = tree(repo, &oid)?;
     let mut hasher = blake3::Hasher::new();
@@ -466,7 +470,11 @@ fn restore(repo: &Repo, target: &ShadowSnapshot, current: &ShadowSnapshot) -> Re
             }
         }
     }
-    git(&repo.root, &["checkout-index", "-a", "-f"], Some(&index.0))?;
+    git(
+        &repo.root,
+        &["-c", "core.autocrlf=false", "checkout-index", "-a", "-f"],
+        Some(&index.0),
+    )?;
     if index_before != index_bytes(repo)? {
         return Err(GitError::Unsafe(
             "real Git index changed concurrently".into(),
