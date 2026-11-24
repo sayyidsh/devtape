@@ -7,16 +7,16 @@ class Devtape < Formula
   on_macos do
     if Hardware::CPU.arm?
       url "https://github.com/sayyidsh/devtape/releases/download/v0.1.0/devtape-aarch64-apple-darwin.tar.gz"
-      sha256 "6b5f8024a1bf7863718d3679e88c21985cc3cf661a99dc6d055b70bfaeaa80e0"
+      sha256 "a7b56f8c5cccbb9294c2abcc1f8785ac2a2e27b181741685d739d7b077552319"
     else
       url "https://github.com/sayyidsh/devtape/releases/download/v0.1.0/devtape-x86_64-apple-darwin.tar.gz"
-      sha256 "2f4bb09168bf15d7bc621d47908f90ae071fb2b23bf8d7728b51b7108df52df8"
+      sha256 "b17cc86958162e243a56d7ce2d535d9af61e1515bbf5a5570fe2e9caf469cf03"
     end
   end
 
   on_linux do
     url "https://github.com/sayyidsh/devtape/releases/download/v0.1.0/devtape-x86_64-unknown-linux-gnu.tar.gz"
-    sha256 "4bb7cb3fd4eb02f6f07f34517a74d8e5fc7d93007c079438ab68b32a7f906b98"
+    sha256 "9e6ced23f1cfac4b9e9c8321f729570e3ca4f771668bcf4520b8e5ae06213d4b"
   end
 
   def install
