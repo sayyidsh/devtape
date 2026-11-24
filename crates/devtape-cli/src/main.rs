@@ -139,6 +139,26 @@ fn open_store(
     }
 }
 
+struct StoreSink(devtape_core::SessionStore);
+
+impl devtape_pty::RecordSink for StoreSink {
+    fn on_session_start(&self, manifest: &dtp_codec::TapeManifest) -> Result<(), String> {
+        self.0
+            .create_session(manifest.clone())
+            .map_err(|e| e.to_string())
+    }
+    fn on_event(&self, id: &str, event: &EventEnvelope) -> Result<(), String> {
+        self.0
+            .send_event(id, event.clone())
+            .map_err(|e| e.to_string())
+    }
+    fn on_session_update(&self, manifest: &dtp_codec::TapeManifest) -> Result<(), String> {
+        self.0
+            .create_session(manifest.clone())
+            .map_err(|e| e.to_string())
+    }
+}
+
 #[tokio::main]
 async fn main() -> Result<std::process::ExitCode, Box<dyn std::error::Error>> {
     let cli = Cli::parse();
@@ -163,12 +183,14 @@ async fn main() -> Result<std::process::ExitCode, Box<dyn std::error::Error>> {
             cmd,
         } => {
             let qos_mode = parse_qos_mode(&qos)?;
+            let store = open_store(db)?;
             let proxy = if net {
                 Some(devtape_net::Proxy::start().await?)
             } else {
                 None
             };
             let config = RecordConfig {
+                sink: Some(std::sync::Arc::new(StoreSink(store.clone()))),
                 extra_env: proxy
                     .as_ref()
                     .map(|p| p.child_env_vars())
@@ -283,7 +305,6 @@ async fn main() -> Result<std::process::ExitCode, Box<dyn std::error::Error>> {
             {
                 outcome.archive = ci::append_context(outcome.archive, payload, redacted_count)?;
             }
-            let store = open_store(db)?;
             store.store_archive(&outcome.archive)?;
             store.close()?;
             let encoded = outcome.archive.encode()?;

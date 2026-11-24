@@ -43,14 +43,24 @@ pub enum PtyError {
     Io(#[from] std::io::Error),
     #[error("codec error: {0}")]
     Codec(#[from] CodecError),
+    #[error("record sink: {0}")]
+    Sink(String),
     #[error("task join error: {0}")]
     Join(String),
 }
 
+/// Receives scrubbed events on the recorder cold path.
+pub trait RecordSink: Send + Sync {
+    fn on_session_start(&self, manifest: &TapeManifest) -> Result<(), String>;
+    fn on_event(&self, session_id: &str, event: &EventEnvelope) -> Result<(), String>;
+    fn on_session_update(&self, manifest: &TapeManifest) -> Result<(), String>;
+}
+
 /// Configuration for a `devtape record` PTY session.
-#[derive(Debug, Clone)]
+#[derive(Clone)]
 pub struct RecordConfig {
     /// Command and arguments to run inside the PTY. If empty, defaults to the user's shell.
+    pub sink: Option<Arc<dyn RecordSink>>,
     pub command: Vec<String>,
     /// Working directory for the child process (defaults to current working directory).
     pub cwd: Option<PathBuf>,
@@ -79,6 +89,7 @@ pub struct RecordConfig {
 impl Default for RecordConfig {
     fn default() -> Self {
         Self {
+            sink: None,
             command: Vec::new(),
             cwd: None,
             qos_mode: QosMode::ZeroStall,
@@ -658,14 +669,41 @@ impl PtyRecorder {
         });
 
         // Cold-path event collector: HLC stamping + OverlapScrubber + DropMarker tracking.
+        let mut manifest = TapeManifest {
+            spec_version: "0.1.0".into(),
+            session_id: session_id.clone(),
+            os: std::env::consts::OS.into(),
+            arch: std::env::consts::ARCH.into(),
+            shell: shell_name,
+            qos_mode: config.qos_mode,
+            export_profile: config.export_profile,
+            extensions: Vec::new(),
+            redaction: RedactionAttestation {
+                ruleset_version: RULESET_VERSION.into(),
+                redacted_count: meta_scrubber.redacted_count(),
+                local_map_excluded: true,
+            },
+        };
+        if let Some(sink) = &config.sink {
+            sink.on_session_start(&manifest).map_err(PtyError::Sink)?;
+        }
         let mut events: Vec<EventEnvelope> = Vec::new();
+        macro_rules! emit {
+            ($event:expr) => {{
+                let event = $event;
+                if let Some(sink) = &config.sink {
+                    sink.on_event(&session_id, &event).map_err(PtyError::Sink)?;
+                }
+                events.push(event);
+            }};
+        }
         let mut seq: u64 = 1;
         let mut stdout_scrubber = OverlapScrubber::new();
         let mut stdin_scrubber = OverlapScrubber::new();
         let mut total_bytes_dropped: u64 = 0;
 
         // 1. SessionStart
-        events.push(EventEnvelope {
+        emit!(EventEnvelope {
             seq,
             hlc: clock.tick(now_wall_ms()),
             span_id: root_span_id.clone(),
@@ -678,7 +716,7 @@ impl PtyRecorder {
         seq += 1;
 
         // 2. SpanStart
-        events.push(EventEnvelope {
+        emit!(EventEnvelope {
             seq,
             hlc: clock.tick(now_wall_ms()),
             span_id: root_span_id.clone(),
@@ -716,7 +754,7 @@ impl PtyRecorder {
                             if let Some(ref master) = pair_master {
                                 master.resize(PtySize { rows, cols, pixel_width: 0, pixel_height: 0 }).map_err(|e| PtyError::Pty(e.to_string()))?;
                             }
-                            events.push(EventEnvelope { seq, hlc: clock.tick(now_wall_ms()), span_id: root_span_id.clone(), parent_span_id: parent_span_id.clone(), event: CoreEvent::Extension { extension_id: "ext.pty.v1".into(), event_name: "terminal_resize".into(), payload: serde_json::json!({"rows": rows, "cols": cols}) } });
+                            emit!(EventEnvelope { seq, hlc: clock.tick(now_wall_ms()), span_id: root_span_id.clone(), parent_span_id: parent_span_id.clone(), event: CoreEvent::Extension { extension_id: "ext.pty.v1".into(), event_name: "terminal_resize".into(), payload: serde_json::json!({"rows": rows, "cols": cols}) } });
                             seq += 1;
                             last_parent_size = Some((rows, cols));
                         }
@@ -729,7 +767,7 @@ impl PtyRecorder {
                     if let Some(ref master) = pair_master {
                         master.resize(PtySize { rows, cols, pixel_width: 0, pixel_height: 0 }).map_err(|e| PtyError::Pty(e.to_string()))?;
                     }
-                    events.push(EventEnvelope { seq, hlc: clock.tick(now_wall_ms()), span_id: root_span_id.clone(), parent_span_id: parent_span_id.clone(), event: CoreEvent::Extension { extension_id: "ext.pty.v1".into(), event_name: "terminal_resize".into(), payload: serde_json::json!({"rows": rows, "cols": cols}) } });
+                    emit!(EventEnvelope { seq, hlc: clock.tick(now_wall_ms()), span_id: root_span_id.clone(), parent_span_id: parent_span_id.clone(), event: CoreEvent::Extension { extension_id: "ext.pty.v1".into(), event_name: "terminal_resize".into(), payload: serde_json::json!({"rows": rows, "cols": cols}) } });
                     seq += 1;
                     continue;
                 }
@@ -745,7 +783,7 @@ impl PtyRecorder {
                         }
                     };
                     if !emit.is_empty() {
-                        events.push(EventEnvelope {
+                        emit!(EventEnvelope {
                             seq,
                             hlc: clock.tick(now_wall_ms()),
                             span_id: root_span_id.clone(),
@@ -765,7 +803,7 @@ impl PtyRecorder {
                 } => {
                     clock.merge(hlc, now_wall_ms());
                     total_bytes_dropped = total_bytes_dropped.saturating_add(bytes_dropped);
-                    events.push(EventEnvelope {
+                    emit!(EventEnvelope {
                         seq,
                         hlc: clock.tick(now_wall_ms()),
                         span_id: root_span_id.clone(),
@@ -801,7 +839,7 @@ impl PtyRecorder {
         let trailing_drops = consumer.take_pending_drops();
         if trailing_drops > 0 {
             total_bytes_dropped = total_bytes_dropped.saturating_add(trailing_drops);
-            events.push(EventEnvelope {
+            emit!(EventEnvelope {
                 seq,
                 hlc: clock.tick(now_wall_ms()),
                 span_id: root_span_id.clone(),
@@ -817,7 +855,7 @@ impl PtyRecorder {
         // Flush remaining tail buffers from OverlapScrubber.
         let rem_stdin = stdin_scrubber.finish();
         if !rem_stdin.is_empty() {
-            events.push(EventEnvelope {
+            emit!(EventEnvelope {
                 seq,
                 hlc: clock.tick(now_wall_ms()),
                 span_id: root_span_id.clone(),
@@ -832,7 +870,7 @@ impl PtyRecorder {
 
         let rem_stdout = stdout_scrubber.finish();
         if !rem_stdout.is_empty() {
-            events.push(EventEnvelope {
+            emit!(EventEnvelope {
                 seq,
                 hlc: clock.tick(now_wall_ms()),
                 span_id: root_span_id.clone(),
@@ -848,7 +886,7 @@ impl PtyRecorder {
         let duration_ms = start_instant.elapsed().as_millis() as u64;
 
         // 4. SpanEnd
-        events.push(EventEnvelope {
+        emit!(EventEnvelope {
             seq,
             hlc: clock.tick(now_wall_ms()),
             span_id: root_span_id.clone(),
@@ -862,7 +900,7 @@ impl PtyRecorder {
 
         // 5. SessionEnd
         let total_events = seq;
-        events.push(EventEnvelope {
+        emit!(EventEnvelope {
             seq,
             hlc: clock.tick(now_wall_ms()),
             span_id: root_span_id,
@@ -877,21 +915,10 @@ impl PtyRecorder {
             + stdout_scrubber.redacted_count()
             + stdin_scrubber.redacted_count();
 
-        let manifest = TapeManifest {
-            spec_version: "0.1.0".into(),
-            session_id,
-            os: std::env::consts::OS.into(),
-            arch: std::env::consts::ARCH.into(),
-            shell: shell_name,
-            qos_mode: config.qos_mode,
-            export_profile: config.export_profile,
-            extensions: Vec::new(),
-            redaction: RedactionAttestation {
-                ruleset_version: RULESET_VERSION.into(),
-                redacted_count: total_redacted,
-                local_map_excluded: true,
-            },
-        };
+        manifest.redaction.redacted_count = total_redacted;
+        if let Some(sink) = &config.sink {
+            sink.on_session_update(&manifest).map_err(PtyError::Sink)?;
+        }
 
         let archive = TapeArchive::new(manifest, events)?;
         Ok(RecordOutcome {

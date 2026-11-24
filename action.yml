@@ -9,7 +9,7 @@ inputs:
     required: true
   version:
     description: DevTape release tag to install.
-    default: v0.2.0
+    default: v0.3.0
   profile:
     description: Export privacy profile (full, diff-only, or trace-only).
     default: diff-only

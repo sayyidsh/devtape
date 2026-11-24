@@ -1,7 +1,7 @@
 # DevTape & DTP v0.1
 
 [![CI](https://github.com/sayyidsh/devtape/actions/workflows/ci.yml/badge.svg)](https://github.com/sayyidsh/devtape/actions/workflows/ci.yml)
-[![Release](https://img.shields.io/github/v/release/sayyidsh/devtape)](https://github.com/sayyidsh/devtape/releases/tag/v0.2.0)
+[![Release](https://img.shields.io/github/v/release/sayyidsh/devtape)](https://github.com/sayyidsh/devtape/releases/tag/v0.3.0)
 [![Live Viewer](https://img.shields.io/badge/Live_Viewer-GitHub_Pages-7dd9c8)](https://sayyidsh.github.io/devtape/)
 [![License: Apache-2.0](https://img.shields.io/badge/License-Apache_2.0-blue.svg)](LICENSE)
 
@@ -23,7 +23,7 @@ brew install sayyidsh/tap/devtape
 cargo install --git https://github.com/sayyidsh/devtape devtape-cli
 
 # Or download the prebuilt macOS Apple Silicon binary directly from GitHub Releases
-curl -fsSL https://github.com/sayyidsh/devtape/releases/download/v0.2.0/devtape-aarch64-apple-darwin.tar.gz | tar -xz && chmod +x devtape
+curl -fsSL https://github.com/sayyidsh/devtape/releases/download/v0.3.0/devtape-aarch64-apple-darwin.tar.gz | tar -xz && chmod +x devtape
 ```
 
 ## 3-Step Quickstart
@@ -46,7 +46,7 @@ Wrap any CI test or build step in 4 lines of YAML to automatically record `ext.c
 
 ```yaml
 - name: Run tests with DevTape failure capture
-  uses: sayyidsh/devtape@v0.2.0
+  uses: sayyidsh/devtape@v0.3.0
   with:
     command: cargo test --workspace
 ```
@@ -55,20 +55,20 @@ Wrap any CI test or build step in 4 lines of YAML to automatically record `ext.c
 
 ## Architecture Overview
 
-Recording uses a dedicated PTY hot-path reader thread (`< 2 ms` passthrough budget) with a `16 MiB` byte-bounded backpressure queue (`QoS-0 ZeroStall` emits normative `DropMarker` events under flood bursts) and streaming 128-byte sliding-window secret redaction (`OverlapScrubber`). Archives carry HLC-ordered causal events, a `RedactionAttestation` manifest, and a canonical Blake3 integrity hash. Sessions are persisted in SQLite (`PRAGMA journal_mode=WAL`), exported by privacy profile (`full`, `diff-only`, `trace-only`), inspected through read-only MCP stdio tools, or viewed locally. Git shadow snapshots use an isolated temporary `GIT_INDEX_FILE` + FastCDC content-addressed storage, and `devtape rewind` automatically creates a `pre-rewind` safety snapshot before modifying the working tree.
+Recording uses a dedicated PTY hot-path reader thread (`< 2 ms` passthrough budget) with a `16 MiB` byte-bounded backpressure queue (`QoS-0 ZeroStall` emits normative `DropMarker` events under flood bursts) and streaming 128-byte sliding-window secret redaction (`OverlapScrubber`). Archives carry HLC-ordered causal events, a `RedactionAttestation` manifest, and a canonical Blake3 integrity hash. Events stream live into SQLite (`PRAGMA journal_mode=WAL`) during active sessions via `RecordSink` and the Single-Writer WAL actor, and sessions can be exported by privacy profile (`full`, `diff-only`, `trace-only`), inspected through read-only MCP stdio tools, or viewed locally. Git shadow snapshots use an isolated temporary `GIT_INDEX_FILE` + FastCDC content-addressed storage, and `devtape rewind` automatically creates a `pre-rewind` safety snapshot before modifying the working tree.
 
 ## Workspace Crates (`#![forbid(unsafe_code)]`)
 
 - `dtp-codec`: `DTAP01` container encoding, 1:100 decompression-bomb guard, HLC, event types, and stateful replay ANSI filtering (`OSC 52` stripping).
 - `devtape-scrub`: Streaming secret scrubbing with sliding-window overlap and `<DTP:REDACTED:KIND:hash6>` placeholders.
-- `devtape-pty`: Cross-platform PTY capture and byte-bounded QoS backpressure.
+- `devtape-pty`: Cross-platform PTY capture, byte-bounded QoS backpressure, and live `RecordSink` streaming.
 - `devtape-git`: Non-destructive shadow snapshots, FastCDC CAS, `rewind`, and `undo-rewind`.
-- `devtape-core`: Single-writer SQLite WAL session store and privacy-profile exporter.
+- `devtape-core`: Single-writer SQLite WAL session store (with live mid-session streaming) and privacy-profile exporter.
 - `devtape-mcp`: Read-only JSON-RPC 2.0 MCP stdio tools (`tape_summary`, `tape_get_failures`, `tape_get_diff`, `tape_search_logs`).
-- `devtape-net`: Opt-in child-only loopback HTTP capture proxy (`--net`) with ephemeral session CA and 1 MiB body truncation.
+- `devtape-net`: Opt-in child-only loopback HTTP & HTTPS (`CONNECT` MITM) capture proxy (`--net`) with ephemeral `rcgen` session CA, dynamic per-host leaf certificates, `Transfer-Encoding: chunked` request body capture + split-chunk secret redaction, and 1 MiB body truncation.
 - `devtape-ui`: Loopback-only (`127.0.0.1`) read-only timeline server with DNS-rebinding check and strict CSP.
-- `dtp-wasm`: Per-span/channel incremental ANSI replay sanitizer and `.tape` decoder helper.
-- `devtape-cli`: Reference `devtape` command-line interface (`3.94 MiB` stripped release binary).
+- `dtp-wasm`: Per-span/channel incremental ANSI replay sanitizer and `wasm32-unknown-unknown` `.tape` browser decoder.
+- `devtape-cli`: Reference `devtape` command-line interface (`4.66 MiB` stripped release binary).
 
 ## Full CLI Reference
 
@@ -77,7 +77,7 @@ devtape doctor
 devtape demo-tape --out sample.tape
 devtape inspect sample.tape
 devtape record --out session.tape --qos zero-stall --db sessions.db -- sh -c 'echo hello'
-devtape record --net --out network.tape -- curl http://example.com/
+devtape record --net --out network.tape -- curl https://example.com/
 devtape snapshot --repo . --label before-change
 devtape rewind --repo . --to SNAPSHOT_ID
 devtape undo-rewind --repo .
@@ -90,9 +90,9 @@ devtape mcp --tape session.tape
 printf 'Bearer example-token\n' | devtape scrub-check
 ```
 
-`view` prints a loopback URL (`http://127.0.0.1:<port>`) and runs until interrupted. It sanitizes dangerous terminal control sequences for display; its displayed integrity hash is that of the original archive. `web/viewer/index.html` (also hosted at [https://sayyidsh.github.io/devtape/](https://sayyidsh.github.io/devtape/)) includes a one-click sample failing session, displays JSON exports locally, and decodes `.tape` files when the browser supports Zstandard or a compatible `decode_and_sanitize_tape_json` hook is supplied.
+`view` prints a loopback URL (`http://127.0.0.1:<port>`) and runs until interrupted. It sanitizes dangerous terminal control sequences for display; its displayed integrity hash is that of the original archive. `web/viewer/index.html` (also hosted at [https://sayyidsh.github.io/devtape/](https://sayyidsh.github.io/devtape/)) includes a one-click sample failing session, displays JSON exports locally, and decodes binary `.tape` files natively in the browser via the compiled `dtp-wasm` WebAssembly module.
 
-`--net` captures plain HTTP via a child-only loopback proxy (`127.0.0.1:0`) without modifying the host environment or system trust store; HTTPS `CONNECT` MITM and chunked request bodies are tracked for `v0.2` (see [CONTRIBUTING.md](CONTRIBUTING.md)).
+`--net` captures both plain HTTP and decrypted HTTPS (`CONNECT` TLS termination via `tokio-rustls` + dynamic per-host leaf certificates signed by the session's ephemeral `rcgen` CA) as well as `Transfer-Encoding: chunked` request bodies via a child-only loopback proxy (`127.0.0.1:0`) without modifying the host environment or system trust store.
 
 ## Verification
 

@@ -51,6 +51,7 @@ type Reply = mpsc::Sender<Result<(), String>>;
 enum Message {
     Session(TapeManifest, Reply),
     Event(String, EventEnvelope),
+    Archive(TapeArchive, Reply),
     Flush(Reply),
     Close(Reply),
 }
@@ -141,9 +142,39 @@ fn actor(mut conn: Connection, rx: mpsc::Receiver<Message>, interval: Duration) 
                     }
                     flush_batch(&mut conn, &mut batch)?;
                     conn.execute(
-                        "INSERT INTO sessions(id,manifest) VALUES (?1,?2)",
+                        "INSERT INTO sessions(id,manifest) VALUES (?1,?2) ON CONFLICT(id) DO UPDATE SET manifest=excluded.manifest",
                         params![manifest.session_id, serde_json::to_string(&manifest)?],
                     )?;
+                    Ok(())
+                })();
+                let _ = reply.send(result.map_err(|e| e.to_string()));
+            }
+            Ok(Message::Archive(archive, reply)) => {
+                let result = (|| -> Result<(), CoreError> {
+                    if let Some(ref e) = failure {
+                        return Err(CoreError::Actor(e.clone()));
+                    }
+                    flush_batch(&mut conn, &mut batch)?;
+                    let tx = conn.transaction()?;
+                    tx.execute(
+                        "INSERT INTO sessions(id,manifest) VALUES (?1,?2) ON CONFLICT(id) DO UPDATE SET manifest=excluded.manifest",
+                        params![archive.manifest.session_id, serde_json::to_string(&archive.manifest)?],
+                    )?;
+                    tx.execute(
+                        "DELETE FROM events WHERE session_id=?1",
+                        [&archive.manifest.session_id],
+                    )?;
+                    {
+                        let mut stmt =
+                            tx.prepare("INSERT INTO events(session_id,event) VALUES (?1,?2)")?;
+                        for event in &archive.events {
+                            stmt.execute(params![
+                                archive.manifest.session_id,
+                                serde_json::to_string(event)?
+                            ])?;
+                        }
+                    }
+                    tx.commit()?;
                     Ok(())
                 })();
                 let _ = reply.send(result.map_err(|e| e.to_string()));
@@ -249,11 +280,7 @@ impl SessionStore {
         result
     }
     pub fn store_archive(&self, archive: &TapeArchive) -> Result<(), CoreError> {
-        self.create_session(archive.manifest.clone())?;
-        for e in &archive.events {
-            self.send_event(&archive.manifest.session_id, e.clone())?;
-        }
-        self.flush()
+        request(&self.inner.tx, |r| Message::Archive(archive.clone(), r))
     }
     pub fn sessions(&self) -> Result<Vec<SessionSummary>, CoreError> {
         self.flush()?;
