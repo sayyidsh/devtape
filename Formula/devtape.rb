@@ -6,25 +6,21 @@ class Devtape < Formula
 
   on_macos do
     if Hardware::CPU.arm?
-      url "https://github.com/sayyidsh/devtape/releases/download/v0.1.0/devtape"
-      sha256 "c80cfe84871710074e6d9b1cc849ed4ff14737cf37e9a2cb67e9ba033fc0ec49"
+      url "https://github.com/sayyidsh/devtape/releases/download/v0.1.0/devtape-aarch64-apple-darwin.tar.gz"
+      sha256 "6b5f8024a1bf7863718d3679e88c21985cc3cf661a99dc6d055b70bfaeaa80e0"
     else
-      url "https://github.com/sayyidsh/devtape/archive/refs/tags/v0.1.0.tar.gz"
-      depends_on "rust" => :build
+      url "https://github.com/sayyidsh/devtape/releases/download/v0.1.0/devtape-x86_64-apple-darwin.tar.gz"
+      sha256 "2f4bb09168bf15d7bc621d47908f90ae071fb2b23bf8d7728b51b7108df52df8"
     end
   end
 
   on_linux do
-    url "https://github.com/sayyidsh/devtape/archive/refs/tags/v0.1.0.tar.gz"
-    depends_on "rust" => :build
+    url "https://github.com/sayyidsh/devtape/releases/download/v0.1.0/devtape-x86_64-unknown-linux-gnu.tar.gz"
+    sha256 "4bb7cb3fd4eb02f6f07f34517a74d8e5fc7d93007c079438ab68b32a7f906b98"
   end
 
   def install
-    if build.with?("rust") || !OS.mac? || !Hardware::CPU.arm?
-      system "cargo", "install", *std_cargo_args(path: "crates/devtape-cli")
-    else
-      bin.install "devtape"
-    end
+    bin.install "devtape"
   end
 
   test do
