@@ -1,6 +1,6 @@
 [package]
 name = "devtape-dtp"
-version = "0.4.2"
+version = "0.4.3"
 edition = "2021"
 license = "Apache-2.0"
 description = "Python bindings for the DevTape Protocol (DTP v0.1) codec and replay sanitizer"
@@ -10,6 +10,6 @@ name = "devtape_dtp"
 crate-type = ["cdylib", "rlib"]
 
 [dependencies]
-dtp-codec = { version = "0.4.2", path = "../../crates/dtp-codec" }
-dtp-wasm = { version = "0.4.2", path = "../../crates/dtp-wasm" }
+dtp-codec = { version = "0.4.3", path = "../../crates/dtp-codec" }
+dtp-wasm = { version = "0.4.3", path = "../../crates/dtp-wasm" }
 pyo3 = { version = "0.23", features = ["extension-module", "abi3-py39"] }

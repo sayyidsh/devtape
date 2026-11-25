@@ -1,5 +1,5 @@
 {
-  "name": "@devtape/dtp-wasm", "version": "0.4.2",
+  "name": "@devtape/dtp-wasm", "version": "0.4.3",
   "description": "WebAssembly DTP v0.1 .tape decoder and incremental ANSI replay sanitizer",
   "license": "Apache-2.0", "type": "module", "main": "./index.mjs", "types": "./index.d.ts",
   "exports": { ".": { "types": "./index.d.ts", "default": "./index.mjs" } },
