@@ -312,15 +312,13 @@ async fn run_tail(
                         extension_id,
                         event_name,
                         payload,
-                    } => {
-                        if filter != devtape_core::StreamFilter::All
-                            || extension_id == "ext.http.v1"
-                            || extension_id == "ext.git.v1"
-                            || extension_id == "ext.ci.v1"
-                        {
-                            println!("[{extension_id}:{event_name}] {payload}");
-                            io::stdout().flush()?;
-                        }
+                    } if filter != devtape_core::StreamFilter::All
+                        || extension_id == "ext.http.v1"
+                        || extension_id == "ext.git.v1"
+                        || extension_id == "ext.ci.v1" =>
+                    {
+                        println!("[{extension_id}:{event_name}] {payload}");
+                        io::stdout().flush()?;
                     }
                     _ => {}
                 }

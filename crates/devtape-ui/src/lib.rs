@@ -12,7 +12,7 @@ use tokio::{
     net::{TcpListener, TcpStream},
 };
 
-pub const HTML: &str = include_str!("../../../web/viewer/index.html");
+pub const HTML: &str = include_str!("../index.html");
 
 /// Escape JSON for an HTML script data block without changing its parsed value.
 pub fn escape_json_for_html_script(json: &str) -> String {

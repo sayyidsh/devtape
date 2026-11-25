@@ -1,7 +1,7 @@
 # DevTape & DTP v0.1
 
 [![CI](https://github.com/sayyidsh/devtape/actions/workflows/ci.yml/badge.svg)](https://github.com/sayyidsh/devtape/actions/workflows/ci.yml)
-[![Release](https://img.shields.io/github/v/release/sayyidsh/devtape)](https://github.com/sayyidsh/devtape/releases/tag/v0.4.0)
+[![Release](https://img.shields.io/github/v/release/sayyidsh/devtape)](https://github.com/sayyidsh/devtape/releases/tag/v0.4.1)
 [![Live Viewer](https://img.shields.io/badge/Live_Viewer-GitHub_Pages-7dd9c8)](https://sayyidsh.github.io/devtape/)
 [![License: Apache-2.0](https://img.shields.io/badge/License-Apache_2.0-blue.svg)](LICENSE)
 
@@ -23,7 +23,7 @@ brew install sayyidsh/tap/devtape
 cargo install --git https://github.com/sayyidsh/devtape devtape-cli
 
 # Or download the prebuilt macOS Apple Silicon binary directly from GitHub Releases
-curl -fsSL https://github.com/sayyidsh/devtape/releases/download/v0.4.0/devtape-aarch64-apple-darwin.tar.gz | tar -xz && chmod +x devtape
+curl -fsSL https://github.com/sayyidsh/devtape/releases/download/v0.4.1/devtape-aarch64-apple-darwin.tar.gz | tar -xz && chmod +x devtape
 ```
 
 ## 3-Step Quickstart
@@ -51,7 +51,7 @@ Wrap any CI test or build step in 4 lines of YAML to automatically record `ext.c
 
 ```yaml
 - name: Run tests with DevTape failure capture
-  uses: sayyidsh/devtape@v0.4.0
+  uses: sayyidsh/devtape@v0.4.1
   with:
     command: cargo test --workspace
 ```
@@ -100,7 +100,7 @@ devtape mcp --tape session.tape
 printf 'Bearer example-token\n' | devtape scrub-check
 ```
 
-`view` prints a loopback URL (`http://127.0.0.1:<port>`) and runs until interrupted. It sanitizes dangerous terminal control sequences for display; its displayed integrity hash is that of the original archive. `web/viewer/index.html` (also hosted at [https://sayyidsh.github.io/devtape/](https://sayyidsh.github.io/devtape/)) includes a one-click sample failing session, displays JSON exports locally, and decodes binary `.tape` files natively in the browser via the compiled `dtp-wasm` WebAssembly module.
+`view` prints a loopback URL (`http://127.0.0.1:<port>`) and runs until interrupted. It sanitizes dangerous terminal control sequences for display; its displayed integrity hash is that of the original archive. `crates/devtape-ui/index.html` (also hosted at [https://sayyidsh.github.io/devtape/](https://sayyidsh.github.io/devtape/)) includes a one-click sample failing session, displays JSON exports locally, and decodes binary `.tape` files natively in the browser via the compiled `dtp-wasm` WebAssembly module.
 
 `--net` captures both plain HTTP and decrypted HTTPS (`CONNECT` TLS termination via `tokio-rustls` + dynamic per-host leaf certificates signed by the session's ephemeral `rcgen` CA) as well as `Transfer-Encoding: chunked` request bodies via a child-only loopback proxy (`127.0.0.1:0`) without modifying the host environment or system trust store.
 

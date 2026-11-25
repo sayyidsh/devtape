@@ -114,42 +114,33 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
-      - name: Verify packaging readiness
+      - name: Check workspace package contents and verify the codec package
         run: |
-          cargo package --list -p dtp-codec
-          cargo publish --dry-run -p dtp-codec
+          cargo package --workspace --locked --no-verify
+          cargo package --locked -p dtp-codec
       - name: Publish workspace crates in dependency order
         env:
           CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN }}
         run: |
           set -euo pipefail
           if [ -z "${CARGO_REGISTRY_TOKEN:-}" ]; then
-            echo "::notice::CARGO_REGISTRY_TOKEN is not configured; skipping live crates.io publish after dry-run verification."
+            echo "::notice::CARGO_REGISTRY_TOKEN is not configured; skipping live crates.io publish after package verification."
             exit 0
           fi
           crates=(
-            dtp-codec
-            devtape-scrub
-            devtape-git
-            devtape-pty
-            devtape-core
-            devtape-mcp
-            devtape-net
-            dtp-wasm
-            devtape-ui
-            devtape-cli
+            dtp-codec devtape-scrub dtp-wasm devtape-git devtape-pty
+            devtape-core devtape-mcp devtape-net devtape-ui devtape-cli
           )
           for crate in "${crates[@]}"; do
             echo "Publishing $crate..."
-            output=$(cargo publish -p "$crate" 2>&1) || {
-              if printf '%s' "$output" | grep -qi "already uploaded\|already exists"; then
-                echo "$crate is already published on crates.io; continuing."
-              else
-                printf '%s\n' "$output" >&2
-                exit 1
-              fi
-            }
-            sleep 15
+            if output=$(cargo publish --locked -p "$crate" 2>&1); then
+              printf '%s\n' "$output"
+            elif printf '%s\n' "$output" | grep -qiE 'already (uploaded|exists|published)'; then
+              echo "$crate is already published on crates.io; continuing."
+            else
+              printf '%s\n' "$output" >&2
+              exit 1
+            fi
           done
 
   publish-npm:
@@ -218,8 +209,19 @@ jobs:
         with:
           name: python-wheel-devtape-dtp
           path: dist-pypi/*.whl
+      - name: Check PyPI publishing configuration
+        id: pypi
+        env:
+          ENABLE_PYPI_PUBLISH: ${{ vars.ENABLE_PYPI_PUBLISH }}
+          PYPI_API_TOKEN: ${{ secrets.PYPI_API_TOKEN }}
+        run: |
+          if [[ "$ENABLE_PYPI_PUBLISH" == 'true' || -n "$PYPI_API_TOKEN" ]]; then
+            echo "enabled=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "::notice::PyPI publishing is disabled; uploaded the verified wheel as a workflow artifact."
+          fi
       - name: Publish wheel to PyPI (when enabled)
-        if: vars.ENABLE_PYPI_PUBLISH == 'true' || secrets.PYPI_API_TOKEN != ''
+        if: steps.pypi.outputs.enabled == 'true'
         uses: pypa/gh-action-pypi-publish@release/v1
         with:
           packages-dir: dist-pypi/

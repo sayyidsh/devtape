@@ -74,6 +74,8 @@ jobs:
         continue-on-error: true
         uses: ./
         with:
+          # Keep CI independent of the release that this change may trigger.
+          version: v0.3.0
           command: |
             echo "Deploying with token ghp_A1b2C3d4E5f6G7h8I9j0K1l2M3n4O5p6Q7r8"
             exit 42
