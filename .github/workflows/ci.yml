@@ -5,6 +5,9 @@ on:
     branches: [main]
   pull_request:
 
+env:
+  CARGO_INCREMENTAL: "0"
+
 jobs:
   test:
     strategy:
@@ -35,9 +38,8 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: '24'
-      - name: Check, build, and execute the browser decoder
+      - name: Verify the browser decoder and dry-run pack devtape-dtp-wasm
         env:
-          CARGO_INCREMENTAL: '0'
           CC_wasm32_unknown_unknown: clang
           AR_wasm32_unknown_unknown: llvm-ar
         run: |

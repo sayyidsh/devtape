@@ -1,7 +1,7 @@
 # DevTape & DTP v0.1
 
 [![CI](https://github.com/sayyidsh/devtape/actions/workflows/ci.yml/badge.svg)](https://github.com/sayyidsh/devtape/actions/workflows/ci.yml)
-[![Release](https://img.shields.io/github/v/release/sayyidsh/devtape)](https://github.com/sayyidsh/devtape/releases/tag/v0.4.3)
+[![Release](https://img.shields.io/github/v/release/sayyidsh/devtape)](https://github.com/sayyidsh/devtape/releases/tag/v0.4.4)
 [![Live Viewer](https://img.shields.io/badge/Live_Viewer-GitHub_Pages-7dd9c8)](https://sayyidsh.github.io/devtape/)
 [![License: Apache-2.0](https://img.shields.io/badge/License-Apache_2.0-blue.svg)](LICENSE)
 
@@ -23,7 +23,7 @@ brew install sayyidsh/tap/devtape
 cargo install --git https://github.com/sayyidsh/devtape devtape-cli
 
 # Or download the prebuilt macOS Apple Silicon binary directly from GitHub Releases
-curl -fsSL https://github.com/sayyidsh/devtape/releases/download/v0.4.3/devtape-aarch64-apple-darwin.tar.gz | tar -xz && chmod +x devtape
+curl -fsSL https://github.com/sayyidsh/devtape/releases/download/v0.4.4/devtape-aarch64-apple-darwin.tar.gz | tar -xz && chmod +x devtape
 ```
 
 ## 3-Step Quickstart
@@ -51,7 +51,7 @@ Wrap any CI test or build step in 4 lines of YAML to automatically record `ext.c
 
 ```yaml
 - name: Run tests with DevTape failure capture
-  uses: sayyidsh/devtape@v0.4.3
+  uses: sayyidsh/devtape@v0.4.4
   with:
     command: cargo test --workspace
 ```
@@ -119,7 +119,7 @@ Apache-2.0. The protocol specification in `spec/` is open and vendor-neutral.
 ## SDKs & Language Bindings
 
 - **Rust (`dtp-codec`)**: use the workspace codec to decode and validate DTP archives.
-- **JavaScript / TypeScript (`@devtape/dtp-wasm`)**: initialize the WebAssembly decoder and call `decodeTape(bytes)`; see [the npm package guide](packages/dtp-wasm/README.md).
+- **JavaScript / TypeScript (`devtape-dtp-wasm`)**: initialize the WebAssembly decoder and call `decodeTape(bytes)`; see [the npm package guide](packages/dtp-wasm/README.md).
 - **Python (`devtape-dtp`)**: use `decode_tape_json` and `sanitize_ansi`; see [the Python binding guide](bindings/python/README.md).
 
 The SDK source is included here; package publication is a separate release step.

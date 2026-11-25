@@ -11,8 +11,8 @@ keywords.workspace = true
 categories.workspace = true
 
 [dependencies]
-devtape-scrub = { version = "0.4.3", path = "../devtape-scrub" }
-dtp-codec = { version = "0.4.3", path = "../dtp-codec" }
+devtape-scrub = { version = "0.4.4", path = "../devtape-scrub" }
+dtp-codec = { version = "0.4.4", path = "../dtp-codec" }
 httparse = "1.10.1"
 rcgen = { version = "0.13", default-features = false, features = ["crypto", "ring", "pem"] }
 serde_json.workspace = true

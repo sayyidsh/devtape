@@ -8,13 +8,14 @@ on:
 permissions:
   contents: write
 
+env:
+  CARGO_INCREMENTAL: "0"
+
 jobs:
   build:
     name: Build (${{ matrix.target }})
     runs-on: ${{ matrix.os }}
     timeout-minutes: 20
-    env:
-      CARGO_INCREMENTAL: "0"
     strategy:
       fail-fast: false
       matrix:
@@ -110,8 +111,6 @@ jobs:
     name: Publish Workspace Crates (crates.io)
     needs: [publish-release]
     runs-on: ubuntu-latest
-    env:
-      CARGO_INCREMENTAL: "0"
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
@@ -145,14 +144,13 @@ jobs:
           done
 
   publish-npm:
-    name: Publish @devtape/dtp-wasm (npm)
+    name: Publish devtape-dtp-wasm (npm)
     needs: [publish-release]
     runs-on: ubuntu-latest
     permissions:
       id-token: write
       contents: read
     env:
-      CARGO_INCREMENTAL: "0"
       CC_wasm32_unknown_unknown: clang
       AR_wasm32_unknown_unknown: llvm-ar
     steps:
@@ -166,12 +164,12 @@ jobs:
         with:
           node-version: "24"
           registry-url: "https://registry.npmjs.org"
-      - name: Build, test conformance, and dry-run pack @devtape/dtp-wasm
+      - name: Build, test conformance, and dry-run pack devtape-dtp-wasm
         run: |
           bash packages/dtp-wasm/build.sh
           node packages/dtp-wasm/test.mjs
           (cd packages/dtp-wasm && npm pack --dry-run)
-      - name: Publish @devtape/dtp-wasm to npm with provenance
+      - name: Publish devtape-dtp-wasm to npm with provenance
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
         run: |
@@ -181,7 +179,7 @@ jobs:
             exit 0
           fi
           cd packages/dtp-wasm
-          npm publish --access public --provenance
+          npm publish --provenance
 
   publish-pypi:
     name: Build & Publish devtape-dtp (PyPI)
@@ -190,8 +188,6 @@ jobs:
     permissions:
       id-token: write
       contents: read
-    env:
-      CARGO_INCREMENTAL: "0"
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
