@@ -195,11 +195,12 @@ jobs:
           (cd packages/dtp-wasm && npm pack --dry-run)
       - name: Publish devtape-dtp-wasm to npm with provenance
         env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+          NPM_TRUSTED_PUBLISHING: ${{ vars.NPM_TRUSTED_PUBLISHING }}
+          NODE_AUTH_TOKEN: ${{ vars.NPM_TRUSTED_PUBLISHING != 'true' && secrets.NPM_TOKEN || '' }}
         run: |
           set -euo pipefail
-          if [ -z "${NODE_AUTH_TOKEN:-}" ]; then
-            echo "::notice::NPM_TOKEN is not configured; skipping live npm publish after pack & conformance verification."
+          if [[ "$NPM_TRUSTED_PUBLISHING" != 'true' && -z "${NODE_AUTH_TOKEN:-}" ]]; then
+            echo "::notice::npm publishing is disabled; package and conformance verification passed."
             exit 0
           fi
           cd packages/dtp-wasm
@@ -234,9 +235,10 @@ jobs:
         id: pypi
         env:
           ENABLE_PYPI_PUBLISH: ${{ vars.ENABLE_PYPI_PUBLISH }}
+          PYPI_TRUSTED_PUBLISHING: ${{ vars.PYPI_TRUSTED_PUBLISHING }}
           PYPI_API_TOKEN: ${{ secrets.PYPI_API_TOKEN }}
         run: |
-          if [[ "$ENABLE_PYPI_PUBLISH" == 'true' || -n "$PYPI_API_TOKEN" ]]; then
+          if [[ "$ENABLE_PYPI_PUBLISH" == 'true' || "$PYPI_TRUSTED_PUBLISHING" == 'true' || -n "$PYPI_API_TOKEN" ]]; then
             echo "enabled=true" >> "$GITHUB_OUTPUT"
           else
             echo "::notice::PyPI publishing is disabled; uploaded the verified wheel as a workflow artifact."
@@ -246,7 +248,7 @@ jobs:
         uses: pypa/gh-action-pypi-publish@release/v1
         with:
           packages-dir: dist-pypi/
-          password: ${{ secrets.PYPI_API_TOKEN }}
+          password: ${{ vars.PYPI_TRUSTED_PUBLISHING != 'true' && secrets.PYPI_API_TOKEN || '' }}
 
   sync-homebrew:
     name: Sync Formula/devtape.rb (Homebrew Tap)
