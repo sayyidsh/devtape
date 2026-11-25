@@ -12,6 +12,7 @@ DevTape is designed as a **protocol first** (`spec/RFC-0001-dtp-v0.1.md` and `sp
 2. **Protocol First:** Keep the 7 mandatory DTP Core events minimal and stable. Put domain-specific signals behind versioned capability extensions (`ext.git.v1`, `ext.http.v1`, `ext.mcp.v1`, `ext.ci.v1`).
 3. **Hard Performance Budgets:**
    - **PTY passthrough latency:** `< 2 ms` (never block terminal I/O on disk, secret scrubbing, or SQLite).
+   - **Steady-state recorder CPU:** `< 2%` of one logical core.
    - **Active RAM footprint:** `~32 MB` core (`~40 MB` with `--net` enabled); `0 MB` idle for UI/MCP.
    - **Release binary size:** `< 15 MB` stripped (`opt-level = "z"`, `lto = "thin"`, `strip = true`).
 4. **Defensive Consumer Parsing:** Any `.tape` reader or viewer must enforce the 1:100 decompression-bomb guard (`256 MiB` ceiling), reject path traversal (`..`, leading `/`, drive letters, null bytes), strip dangerous terminal control sequences (`OSC 52` clipboard writes, window-title overrides), and render untrusted fields without `innerHTML`.
@@ -47,6 +48,7 @@ node scripts/check-release-size.mjs target/release/devtape
 - **Release size:** CI checks the uncompressed, stripped Linux executable on pull requests and pushes to `main`. Release builds apply the same strict 15,000,000-byte ceiling to all four platform binaries. Use `target/release/devtape.exe` for the local size check on Windows.
 - **Microbenchmarks:** Run `CARGO_INCREMENTAL=0 cargo bench --locked -p dtp-codec --bench codec_bench` and `CARGO_INCREMENTAL=0 cargo bench --locked -p devtape-scrub --bench scrub_bench`. CI records codec encode/decode time, ANSI sanitization time, fixture size, and scrubber throughput in the job summary. Timing measurements are informational on shared runners.
 - **Interactive PTY latency:** After building the stripped CLI, run `python3 scripts/bench-pty.py target/release/devtape` on Linux or macOS. It compares a direct PTY against the same shell responder under `devtape record` with SQLite enabled. Both paths report p50, p95, and p99 after warmup. Added latency is recorded p95 minus direct p95. CI reports the measurements. Pass `--enforce-budget` on a controlled machine to require less than 2 ms added p95 latency.
+- **Recorder CPU and memory:** On Linux, run `python3 scripts/bench-resources.py target/release/devtape`. The benchmark records 100 lines of 256 bytes per second into SQLite with and without `--net`. The network workload also sends two HTTP requests per second through the proxy to a loopback server. After warmup it samples the recorder process for ten seconds. CPU is average utilization of one logical core, and RSS is the highest scheduled sample in decimal MB. These figures exclude the recorded child and session startup and finalization. CI reports both measurements. Pass `--enforce-budget` on a controlled machine to enforce < 2% CPU and RSS ceilings of 32 MB for core and 40 MB with `--net`.
 
 ---
 

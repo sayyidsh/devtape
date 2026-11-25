@@ -53,6 +53,17 @@ jobs:
             echo '~~~'
           } | tee -a "$GITHUB_STEP_SUMMARY"
 
+      - name: Measure steady-state CPU and memory
+        shell: bash
+        run: |
+          {
+            echo '### DevTape recorder resource usage'
+            echo
+            echo '~~~text'
+            python3 scripts/bench-resources.py target/release/devtape
+            echo '~~~'
+          } | tee -a "$GITHUB_STEP_SUMMARY"
+
   browser-decoder:
     runs-on: ubuntu-latest
     steps:
