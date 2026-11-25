@@ -87,7 +87,7 @@ jobs:
             ${{ matrix.asset }}
             ${{ matrix.asset }}.sha256
 
-  publish:
+  publish-release:
     name: Publish GitHub Release
     needs: build
     runs-on: ubuntu-latest
@@ -104,3 +104,200 @@ jobs:
           generate_release_notes: true
           files: |
             dist/*
+
+  publish-crates:
+    name: Publish Workspace Crates (crates.io)
+    needs: [publish-release]
+    runs-on: ubuntu-latest
+    env:
+      CARGO_INCREMENTAL: "0"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - name: Verify packaging readiness
+        run: |
+          cargo package --list -p dtp-codec
+          cargo publish --dry-run -p dtp-codec
+      - name: Publish workspace crates in dependency order
+        env:
+          CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN }}
+        run: |
+          set -euo pipefail
+          if [ -z "${CARGO_REGISTRY_TOKEN:-}" ]; then
+            echo "::notice::CARGO_REGISTRY_TOKEN is not configured; skipping live crates.io publish after dry-run verification."
+            exit 0
+          fi
+          crates=(
+            dtp-codec
+            devtape-scrub
+            devtape-git
+            devtape-pty
+            devtape-core
+            devtape-mcp
+            devtape-net
+            dtp-wasm
+            devtape-ui
+            devtape-cli
+          )
+          for crate in "${crates[@]}"; do
+            echo "Publishing $crate..."
+            output=$(cargo publish -p "$crate" 2>&1) || {
+              if printf '%s' "$output" | grep -qi "already uploaded\|already exists"; then
+                echo "$crate is already published on crates.io; continuing."
+              else
+                printf '%s\n' "$output" >&2
+                exit 1
+              fi
+            }
+            sleep 15
+          done
+
+  publish-npm:
+    name: Publish @devtape/dtp-wasm (npm)
+    needs: [publish-release]
+    runs-on: ubuntu-latest
+    permissions:
+      id-token: write
+      contents: read
+    env:
+      CARGO_INCREMENTAL: "0"
+      CC_wasm32_unknown_unknown: clang
+      AR_wasm32_unknown_unknown: llvm-ar
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: wasm32-unknown-unknown
+      - run: sudo apt-get update && sudo apt-get install -y clang llvm lld
+      - run: cargo install wasm-bindgen-cli --version 0.2.130 --locked
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+          registry-url: "https://registry.npmjs.org"
+      - name: Build, test conformance, and dry-run pack @devtape/dtp-wasm
+        run: |
+          bash packages/dtp-wasm/build.sh
+          node packages/dtp-wasm/test.mjs
+          (cd packages/dtp-wasm && npm pack --dry-run)
+      - name: Publish @devtape/dtp-wasm to npm with provenance
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+        run: |
+          set -euo pipefail
+          if [ -z "${NODE_AUTH_TOKEN:-}" ]; then
+            echo "::notice::NPM_TOKEN is not configured; skipping live npm publish after pack & conformance verification."
+            exit 0
+          fi
+          cd packages/dtp-wasm
+          npm publish --access public --provenance
+
+  publish-pypi:
+    name: Build & Publish devtape-dtp (PyPI)
+    needs: [publish-release]
+    runs-on: ubuntu-latest
+    permissions:
+      id-token: write
+      contents: read
+    env:
+      CARGO_INCREMENTAL: "0"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Build wheel with maturin and verify 16-vector conformance
+        run: |
+          python -m venv .venv
+          .venv/bin/python -m pip install maturin pytest
+          .venv/bin/maturin build --release --manifest-path bindings/python/Cargo.toml --out dist-pypi
+          .venv/bin/python -m pip install dist-pypi/*.whl
+          .venv/bin/pytest bindings/python/tests/test_conformance.py
+      - name: Upload verified Python wheel artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: python-wheel-devtape-dtp
+          path: dist-pypi/*.whl
+      - name: Publish wheel to PyPI (when enabled)
+        if: vars.ENABLE_PYPI_PUBLISH == 'true' || secrets.PYPI_API_TOKEN != ''
+        uses: pypa/gh-action-pypi-publish@release/v1
+        with:
+          packages-dir: dist-pypi/
+          password: ${{ secrets.PYPI_API_TOKEN }}
+
+  sync-homebrew:
+    name: Sync Formula/devtape.rb (Homebrew Tap)
+    needs: [publish-release]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Download release checksums
+        uses: actions/download-artifact@v4
+        with:
+          path: dist
+          merge-multiple: true
+      - name: Render Formula/devtape.rb from release digests
+        run: |
+          set -euo pipefail
+          TAG="${GITHUB_REF_NAME}"
+          SHA_ARM=$(awk '{print $1}' dist/devtape-aarch64-apple-darwin.tar.gz.sha256)
+          SHA_INTEL=$(awk '{print $1}' dist/devtape-x86_64-apple-darwin.tar.gz.sha256)
+          SHA_LINUX=$(awk '{print $1}' dist/devtape-x86_64-unknown-linux-gnu.tar.gz.sha256)
+          cat > Formula/devtape.rb <<EOF
+          class Devtape < Formula
+            desc "Record, scrub, rewind, and inspect terminal and AI-agent sessions"
+            homepage "https://sayyidsh.github.io/devtape/"
+            license "Apache-2.0"
+
+            on_macos do
+              on_arm do
+                url "https://github.com/sayyidsh/devtape/releases/download/${TAG}/devtape-aarch64-apple-darwin.tar.gz"
+                sha256 "${SHA_ARM}"
+              end
+              on_intel do
+                url "https://github.com/sayyidsh/devtape/releases/download/${TAG}/devtape-x86_64-apple-darwin.tar.gz"
+                sha256 "${SHA_INTEL}"
+              end
+            end
+
+            on_linux do
+              on_intel do
+                url "https://github.com/sayyidsh/devtape/releases/download/${TAG}/devtape-x86_64-unknown-linux-gnu.tar.gz"
+                sha256 "${SHA_LINUX}"
+              end
+            end
+
+            def install
+              bin.install "devtape"
+            end
+
+            test do
+              system bin/"devtape", "doctor"
+            end
+          end
+          EOF
+          cat Formula/devtape.rb
+      - name: Upload rendered Formula/devtape.rb artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: homebrew-formula
+          path: Formula/devtape.rb
+      - name: Push Formula/devtape.rb to sayyidsh/homebrew-tap
+        env:
+          HOMEBREW_TAP_TOKEN: ${{ secrets.HOMEBREW_TAP_TOKEN }}
+        run: |
+          set -euo pipefail
+          if [ -z "${HOMEBREW_TAP_TOKEN:-}" ]; then
+            echo "::notice::HOMEBREW_TAP_TOKEN is not configured; uploaded rendered Formula/devtape.rb as workflow artifact."
+            exit 0
+          fi
+          git clone "https://x-access-token:${HOMEBREW_TAP_TOKEN}@github.com/sayyidsh/homebrew-tap.git" /tmp/tap
+          cp Formula/devtape.rb /tmp/tap/Formula/devtape.rb
+          cd /tmp/tap
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          if ! git diff --quiet Formula/devtape.rb; then
+            git add Formula/devtape.rb
+            git commit -m "feat(devtape): update devtape formula to ${GITHUB_REF_NAME}"
+            git push origin main
+          fi

@@ -71,7 +71,7 @@
   <circle cx="38" cy="35" r="6" fill="#ef4444" />
   <circle cx="58" cy="35" r="6" fill="#f59e0b" />
   <circle cx="78" cy="35" r="6" fill="#10b981" />
-  <text class="title" x="460" y="40" text-anchor="middle">devtape v0.3.0 — DTP v0.1 (Record → Scrub → Rewind → View)</text>
+  <text class="title" x="460" y="40" text-anchor="middle">devtape v0.4.0 — DTP v0.1 (Record → Scrub → Rewind → View)</text>
 
   <!-- Status Pills in Header -->
   <rect x="748" y="24" width="140" height="22" rx="11" fill="#0f292e" stroke="#2dd4bf" stroke-width="1" />
