@@ -1,7 +1,7 @@
 # DevTape & DTP v0.1
 
 [![CI](https://github.com/sayyidsh/devtape/actions/workflows/ci.yml/badge.svg)](https://github.com/sayyidsh/devtape/actions/workflows/ci.yml)
-[![Release](https://img.shields.io/github/v/release/sayyidsh/devtape)](https://github.com/sayyidsh/devtape/releases/tag/v0.4.4)
+[![Release](https://img.shields.io/github/v/release/sayyidsh/devtape)](https://github.com/sayyidsh/devtape/releases/tag/v0.4.5)
 [![Live Viewer](https://img.shields.io/badge/Live_Viewer-GitHub_Pages-7dd9c8)](https://sayyidsh.github.io/devtape/)
 [![License: Apache-2.0](https://img.shields.io/badge/License-Apache_2.0-blue.svg)](LICENSE)
 
@@ -23,7 +23,7 @@ brew install sayyidsh/tap/devtape
 cargo install --git https://github.com/sayyidsh/devtape devtape-cli
 
 # Or download the prebuilt macOS Apple Silicon binary directly from GitHub Releases
-curl -fsSL https://github.com/sayyidsh/devtape/releases/download/v0.4.4/devtape-aarch64-apple-darwin.tar.gz | tar -xz && chmod +x devtape
+curl -fsSL https://github.com/sayyidsh/devtape/releases/download/v0.4.5/devtape-aarch64-apple-darwin.tar.gz | tar -xz && chmod +x devtape
 ```
 
 ## 3-Step Quickstart
@@ -51,7 +51,7 @@ Wrap any CI test or build step in 4 lines of YAML to automatically record `ext.c
 
 ```yaml
 - name: Run tests with DevTape failure capture
-  uses: sayyidsh/devtape@v0.4.4
+  uses: sayyidsh/devtape@v0.4.5
   with:
     command: cargo test --workspace
 ```

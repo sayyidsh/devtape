@@ -68,7 +68,7 @@ dependencies = [
 
 [[package]]
 name = "devtape-dtp"
-version = "0.4.4"
+version = "0.4.5"
 dependencies = [
  "dtp-codec",
  "dtp-wasm",
@@ -77,7 +77,7 @@ dependencies = [
 
 [[package]]
 name = "dtp-codec"
-version = "0.4.4"
+version = "0.4.5"
 dependencies = [
  "blake3",
  "serde",
@@ -88,7 +88,7 @@ dependencies = [
 
 [[package]]
 name = "dtp-wasm"
-version = "0.4.4"
+version = "0.4.5"
 dependencies = [
  "dtp-codec",
  "serde_json",

@@ -179,7 +179,7 @@ jobs:
             exit 0
           fi
           cd packages/dtp-wasm
-          npm publish --provenance
+          npm publish --access public --provenance
 
   publish-pypi:
     name: Build & Publish devtape-dtp (PyPI)

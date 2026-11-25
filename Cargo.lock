@@ -222,7 +222,7 @@ checksum = "9e9de72ce2ad1f90dc62fa25f0f430ef85eb4b0d8fa0be4f30373bc40a21d28e"
 
 [[package]]
 name = "devtape-cli"
-version = "0.4.4"
+version = "0.4.5"
 dependencies = [
  "clap",
  "devtape-core",
@@ -241,7 +241,7 @@ dependencies = [
 
 [[package]]
 name = "devtape-core"
-version = "0.4.4"
+version = "0.4.5"
 dependencies = [
  "blake3",
  "devtape-scrub",
@@ -257,7 +257,7 @@ dependencies = [
 
 [[package]]
 name = "devtape-git"
-version = "0.4.4"
+version = "0.4.5"
 dependencies = [
  "blake3",
  "dtp-codec",
@@ -269,7 +269,7 @@ dependencies = [
 
 [[package]]
 name = "devtape-mcp"
-version = "0.4.4"
+version = "0.4.5"
 dependencies = [
  "dtp-codec",
  "serde_json",
@@ -277,7 +277,7 @@ dependencies = [
 
 [[package]]
 name = "devtape-net"
-version = "0.4.4"
+version = "0.4.5"
 dependencies = [
  "devtape-scrub",
  "dtp-codec",
@@ -294,7 +294,7 @@ dependencies = [
 
 [[package]]
 name = "devtape-pty"
-version = "0.4.4"
+version = "0.4.5"
 dependencies = [
  "blake3",
  "devtape-scrub",
@@ -309,7 +309,7 @@ dependencies = [
 
 [[package]]
 name = "devtape-scrub"
-version = "0.4.4"
+version = "0.4.5"
 dependencies = [
  "blake3",
  "regex",
@@ -317,7 +317,7 @@ dependencies = [
 
 [[package]]
 name = "devtape-ui"
-version = "0.4.4"
+version = "0.4.5"
 dependencies = [
  "dtp-codec",
  "dtp-wasm",
@@ -333,7 +333,7 @@ checksum = "75b325c5dbd37f80359721ad39aca5a29fb04c89279657cffdda8736d0c0b9d2"
 
 [[package]]
 name = "dtp-codec"
-version = "0.4.4"
+version = "0.4.5"
 dependencies = [
  "blake3",
  "serde",
@@ -344,7 +344,7 @@ dependencies = [
 
 [[package]]
 name = "dtp-wasm"
-version = "0.4.4"
+version = "0.4.5"
 dependencies = [
  "dtp-codec",
  "serde_json",
