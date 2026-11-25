@@ -10,8 +10,8 @@ use dtp_codec::{
     StreamChannel, TapeArchive, TapeManifest,
 };
 use std::fs;
-use std::io::{self, Read};
-use std::path::PathBuf;
+use std::io::{self, Read, Write};
+use std::path::{Path, PathBuf};
 
 #[derive(Parser)]
 #[command(
@@ -57,6 +57,53 @@ enum Commands {
         /// Command and arguments to execute inside the PTY (defaults to $SHELL).
         #[arg(trailing_var_arg = true)]
         cmd: Vec<String>,
+    },
+    /// List active and stale recordings.
+    Ps {
+        #[arg(long)]
+        db: Option<PathBuf>,
+        #[arg(long)]
+        json: bool,
+    },
+    /// Stream events from an active or stored SQLite WAL recording session.
+    Tail {
+        /// Specific session ID to tail (defaults to the latest session if omitted).
+        session_id: Option<String>,
+        /// Select the most recent active or recorded session.
+        #[arg(long)]
+        latest: bool,
+        /// Follow the session live as new events are committed to SQLite WAL.
+        #[arg(short, long)]
+        follow: bool,
+        /// Filter event stream: all, pty, http, or git.
+        #[arg(long, default_value = "all")]
+        filter: String,
+        /// Emit newline-delimited JSON event envelopes.
+        #[arg(long)]
+        json: bool,
+        /// SQLite session database path.
+        #[arg(long)]
+        db: Option<PathBuf>,
+    },
+    /// Compare two DTP v0.1 .tape archives deterministically.
+    Diff {
+        a: PathBuf,
+        b: PathBuf,
+        #[arg(long)]
+        json: bool,
+    },
+    /// Search across .tape archives or local stored sessions.
+    Search {
+        query: String,
+        paths: Vec<PathBuf>,
+        #[arg(long)]
+        regex: bool,
+        #[arg(long, default_value = "all")]
+        stream: String,
+        #[arg(long)]
+        json: bool,
+        #[arg(long)]
+        db: Option<PathBuf>,
     },
     /// List stored sessions.
     Sessions {
@@ -117,6 +164,243 @@ fn parse_qos_mode(raw: &str) -> Result<QosMode, String> {
     }
 }
 
+fn resolve_db_path(explicit: Option<PathBuf>) -> io::Result<PathBuf> {
+    if let Some(path) = explicit.or_else(|| std::env::var_os("DEVTAPE_DB").map(PathBuf::from)) {
+        return Ok(path);
+    }
+    Ok(std::env::current_dir()?.join(".devtape/sessions.db"))
+}
+
+fn event_matches_filter(event: &CoreEvent, filter: devtape_core::StreamFilter) -> bool {
+    match filter {
+        devtape_core::StreamFilter::All => true,
+        devtape_core::StreamFilter::Pty => {
+            matches!(
+                event,
+                CoreEvent::StreamChunk { .. }
+                    | CoreEvent::DropMarker { .. }
+                    | CoreEvent::SpanStart { .. }
+                    | CoreEvent::SpanEnd { .. }
+            ) || matches!(
+                event,
+                CoreEvent::Extension { extension_id, .. } if extension_id == "ext.pty.v1"
+            )
+        }
+        devtape_core::StreamFilter::Http => matches!(
+            event,
+            CoreEvent::Extension { extension_id, .. } if extension_id == "ext.http.v1"
+        ),
+        devtape_core::StreamFilter::Git => {
+            matches!(event, CoreEvent::StateSnapshot { .. })
+                || matches!(
+                    event,
+                    CoreEvent::Extension { extension_id, .. } if extension_id == "ext.git.v1"
+                )
+        }
+    }
+}
+
+async fn run_tail(
+    path: &Path,
+    explicit_id: Option<&str>,
+    follow: bool,
+    filter: devtape_core::StreamFilter,
+    json: bool,
+) -> Result<(), Box<dyn std::error::Error>> {
+    let wait_deadline = std::time::Instant::now() + std::time::Duration::from_secs(5);
+    let target_id = loop {
+        if let Some(id) = devtape_core::resolve_tail_session_id(path, explicit_id)? {
+            break id;
+        }
+        if !follow || std::time::Instant::now() >= wait_deadline {
+            return Err("no matching session found to tail".into());
+        }
+        tokio::time::sleep(std::time::Duration::from_millis(40)).await;
+    };
+
+    let mut after_rowid: i64 = 0;
+    let mut seen: std::collections::BTreeSet<(HlcTimestamp, &'static str)> =
+        std::collections::BTreeSet::new();
+    let mut sanitizers: std::collections::BTreeMap<
+        (String, u8),
+        (dtp_codec::AnsiReplaySanitizer, StreamChannel),
+    > = std::collections::BTreeMap::new();
+    let mut last_seq: u64 = 0;
+    let mut last_hlc: Option<HlcTimestamp> = None;
+    let mut last_parent: Option<String> = None;
+
+    loop {
+        let (rows, status) =
+            devtape_core::fetch_session_events_since(path, &target_id, after_rowid, 3_000)?;
+        let mut saw_end = false;
+        for (rowid, mut env) in rows {
+            after_rowid = rowid;
+            let tag = match &env.event {
+                CoreEvent::SessionStart { .. } => "session_start",
+                CoreEvent::SpanStart { .. } => "span_start",
+                CoreEvent::StreamChunk { .. } => "stream_chunk",
+                CoreEvent::StateSnapshot { .. } => "state_snapshot",
+                CoreEvent::SpanEnd { .. } => "span_end",
+                CoreEvent::SessionEnd { .. } => "session_end",
+                CoreEvent::DropMarker { .. } => "drop_marker",
+                CoreEvent::Extension { .. } => "extension",
+            };
+            if !seen.insert((env.hlc, tag)) {
+                continue;
+            }
+            last_seq = env.seq;
+            last_hlc = Some(env.hlc);
+            last_parent = env.parent_span_id.clone();
+            if matches!(env.event, CoreEvent::SessionEnd { .. }) {
+                saw_end = true;
+            }
+
+            match &mut env.event {
+                CoreEvent::StreamChunk { channel, data } => {
+                    let ch_idx = match channel {
+                        StreamChannel::Stdin => 0,
+                        StreamChannel::Stdout => 1,
+                        StreamChannel::Stderr => 2,
+                    };
+                    let entry = sanitizers
+                        .entry((env.span_id.clone(), ch_idx))
+                        .or_insert_with(|| (dtp_codec::AnsiReplaySanitizer::new(), *channel));
+                    *data = entry.0.push_chunk(data);
+                    if data.is_empty() {
+                        continue;
+                    }
+                }
+                CoreEvent::SpanStart { label, .. } => {
+                    *label = dtp_codec::sanitize_ansi_for_replay(label);
+                }
+                _ => {}
+            }
+
+            if !event_matches_filter(&env.event, filter) {
+                continue;
+            }
+
+            if json {
+                println!("{}", serde_json::to_string(&env)?);
+                io::stdout().flush()?;
+            } else {
+                match &env.event {
+                    CoreEvent::StreamChunk { data, .. } => {
+                        print!("{data}");
+                        io::stdout().flush()?;
+                    }
+                    CoreEvent::DropMarker {
+                        bytes_dropped,
+                        reason,
+                    } => {
+                        println!("[drop_marker] {bytes_dropped} bytes dropped ({reason})");
+                        io::stdout().flush()?;
+                    }
+                    CoreEvent::StateSnapshot {
+                        tree_blake3,
+                        changed_files,
+                    } => {
+                        println!(
+                            "[git_snapshot] tree_blake3={tree_blake3} files={}",
+                            changed_files.join(",")
+                        );
+                        io::stdout().flush()?;
+                    }
+                    CoreEvent::Extension {
+                        extension_id,
+                        event_name,
+                        payload,
+                    } => {
+                        if filter != devtape_core::StreamFilter::All
+                            || extension_id == "ext.http.v1"
+                            || extension_id == "ext.git.v1"
+                            || extension_id == "ext.ci.v1"
+                        {
+                            println!("[{extension_id}:{event_name}] {payload}");
+                            io::stdout().flush()?;
+                        }
+                    }
+                    _ => {}
+                }
+            }
+        }
+
+        if !follow || saw_end || status != devtape_core::SessionStatus::Active {
+            break;
+        }
+
+        tokio::time::sleep(std::time::Duration::from_millis(40)).await;
+    }
+
+    if filter.allows_pty() {
+        for ((span_id, _), (mut sanitizer, channel)) in sanitizers {
+            let rem = sanitizer.finish();
+            if !rem.is_empty() {
+                if json {
+                    last_seq += 1;
+                    let env = EventEnvelope {
+                        seq: last_seq,
+                        hlc: last_hlc.unwrap_or_else(|| HlcTimestamp::now(1)),
+                        span_id,
+                        parent_span_id: last_parent.clone(),
+                        event: CoreEvent::StreamChunk { channel, data: rem },
+                    };
+                    println!("{}", serde_json::to_string(&env)?);
+                } else {
+                    print!("{rem}");
+                }
+                io::stdout().flush()?;
+            }
+        }
+    }
+    Ok(())
+}
+
+fn print_diff_report(a: &Path, b: &Path, report: &devtape_core::TapeDiffReport) {
+    println!(
+        "DevTape Diff: {} ({}) vs {} ({})",
+        a.display(),
+        report.session_a,
+        b.display(),
+        report.session_b
+    );
+    println!(
+        "Exit Code: {:?} -> {:?} (changed: {})",
+        report.exit_code_a, report.exit_code_b, report.exit_code_changed
+    );
+    println!(
+        "Duration:  {} ms -> {} ms (delta: {:+} ms)",
+        report.duration_ms_a, report.duration_ms_b, report.duration_delta_ms
+    );
+    println!(
+        "Events:    {} -> {} (delta: {:+})",
+        report.total_events_a, report.total_events_b, report.total_events_delta
+    );
+    for (kind, counts) in &report.event_counts {
+        println!(
+            "  - {:<22} {} -> {} ({:+})",
+            kind, counts.a, counts.b, counts.delta
+        );
+    }
+    println!(
+        "Git State: tree_blake3 {:?} -> {:?} (changed: {}, +{} / -{} files)",
+        report.git.tree_blake3_a,
+        report.git.tree_blake3_b,
+        report.git.changed,
+        report.git.added_files.len(),
+        report.git.removed_files.len()
+    );
+    if !report.http.is_empty() {
+        println!("HTTP Exchanges ({}):", report.http.len());
+        for h in &report.http {
+            println!(
+                "  - {} {} : status {:?} -> {:?} (changed: {})",
+                h.method, h.url, h.status_a, h.status_b, h.status_changed
+            );
+        }
+    }
+}
+
 fn open_store(
     explicit: Option<PathBuf>,
 ) -> Result<devtape_core::SessionStore, devtape_core::CoreError> {
@@ -148,6 +432,9 @@ impl devtape_pty::RecordSink for StoreSink {
             .map_err(|e| e.to_string())
     }
     fn on_event(&self, id: &str, event: &EventEnvelope) -> Result<(), String> {
+        if matches!(event.event, CoreEvent::SessionEnd { .. }) {
+            return Ok(());
+        }
         self.0
             .send_event(id, event.clone())
             .map_err(|e| e.to_string())
@@ -319,6 +606,103 @@ async fn main() -> Result<std::process::ExitCode, Box<dyn std::error::Error>> {
                 outcome.exit_code
             );
             status = std::process::ExitCode::from(u8::try_from(outcome.exit_code).unwrap_or(1));
+        }
+        Commands::Ps { db, json } => {
+            let path = resolve_db_path(db)?;
+            let sessions = devtape_core::inspect_sessions(&path, 3_000)?;
+            if json {
+                println!("{}", serde_json::to_string_pretty(&sessions)?);
+            } else {
+                println!("SESSION ID\tSTATUS\tELAPSED MS\tEVENTS\tCOMMAND");
+                for item in sessions {
+                    let status_str = match item.status {
+                        devtape_core::SessionStatus::Active => "active",
+                        devtape_core::SessionStatus::Stale => "stale",
+                        devtape_core::SessionStatus::Completed => "completed",
+                    };
+                    println!(
+                        "{}\t{}\t{}\t{}\t{}",
+                        item.session_id,
+                        status_str,
+                        item.elapsed_ms,
+                        item.event_count,
+                        item.command
+                    );
+                }
+            }
+        }
+        Commands::Tail {
+            session_id,
+            latest,
+            follow,
+            filter,
+            json,
+            db,
+        } => {
+            if session_id.is_some() && latest {
+                return Err("cannot specify both <SESSION_ID> and --latest".into());
+            }
+            let stream_filter = devtape_core::StreamFilter::parse(&filter)?;
+            let path = resolve_db_path(db)?;
+            run_tail(&path, session_id.as_deref(), follow, stream_filter, json).await?;
+        }
+        Commands::Diff { a, b, json } => {
+            let archive_a = TapeArchive::decode(&fs::read(&a)?)?;
+            let archive_b = TapeArchive::decode(&fs::read(&b)?)?;
+            let report = devtape_core::diff_archives(&archive_a, &archive_b);
+            if json {
+                println!("{}", serde_json::to_string_pretty(&report)?);
+            } else {
+                print_diff_report(&a, &b, &report);
+            }
+        }
+        Commands::Search {
+            query,
+            paths,
+            regex,
+            stream,
+            json,
+            db,
+        } => {
+            let stream_filter = devtape_core::StreamFilter::parse(&stream)?;
+            let mut matches = Vec::new();
+            if paths.is_empty() {
+                let store = open_store(db)?;
+                let summaries = store.sessions()?;
+                for s in summaries {
+                    let (archive, _) = store.export_session(&s.session_id, ExportProfile::Full)?;
+                    matches.extend(devtape_core::search_archive(
+                        &s.session_id,
+                        &archive,
+                        &query,
+                        regex,
+                        stream_filter,
+                    )?);
+                }
+                store.close()?;
+            } else {
+                for path in &paths {
+                    let archive = TapeArchive::decode(&fs::read(path)?)?;
+                    let source = path.display().to_string();
+                    matches.extend(devtape_core::search_archive(
+                        &source,
+                        &archive,
+                        &query,
+                        regex,
+                        stream_filter,
+                    )?);
+                }
+            }
+            if json {
+                println!("{}", serde_json::to_string_pretty(&matches)?);
+            } else {
+                for m in &matches {
+                    println!(
+                        "{} [{}] +{}ms [{}#{}] {}",
+                        m.source, m.session_id, m.offset_ms, m.stream, m.seq, m.snippet
+                    );
+                }
+            }
         }
         Commands::Sessions { db } => {
             let store = open_store(db)?;

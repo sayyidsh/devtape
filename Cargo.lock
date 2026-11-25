@@ -246,6 +246,8 @@ dependencies = [
  "blake3",
  "devtape-scrub",
  "dtp-codec",
+ "dtp-wasm",
+ "regex",
  "rusqlite",
  "serde",
  "serde_json",
