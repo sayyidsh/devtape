@@ -1,6 +1,8 @@
 use std::io::{Read, Write};
 use std::net::{Ipv4Addr, TcpListener};
 use std::process::Command;
+use std::sync::mpsc;
+use std::time::Duration;
 
 fn read_http_request(stream: &mut std::net::TcpStream) {
     let mut buf = [0u8; 4096];
@@ -17,18 +19,6 @@ fn read_http_request(stream: &mut std::net::TcpStream) {
     }
 }
 
-fn send_http_via_proxy(proxy_url: &str, target_addr: std::net::SocketAddr, path: &str) {
-    let proxy_host = proxy_url.strip_prefix("http://").unwrap_or(proxy_url);
-    let mut stream = std::net::TcpStream::connect(proxy_host).unwrap();
-    write!(
-        stream,
-        "GET http://{target_addr}{path} HTTP/1.1\r\nHost: {target_addr}\r\nConnection: close\r\n\r\n"
-    )
-    .unwrap();
-    let mut resp = Vec::new();
-    let _ = stream.read_to_end(&mut resp);
-}
-
 #[test]
 fn diff_and_search_compare_tapes_and_reject_corrupted_vectors() {
     let dir = tempfile::tempdir().unwrap();
@@ -39,12 +29,16 @@ fn diff_and_search_compare_tapes_and_reject_corrupted_vectors() {
     // Start a real loopback HTTP server that serves 200 OK on first request and 503 on second.
     let listener = TcpListener::bind((Ipv4Addr::LOCALHOST, 0)).unwrap();
     let server_addr = listener.local_addr().unwrap();
+    let (served, responses) = mpsc::channel();
     let server_thread = std::thread::spawn(move || {
         for (status_line, body) in [
             ("200 OK", "status=healthy_alpha"),
             ("503 Service Unavailable", "status=degraded_beta"),
         ] {
             let (mut socket, _) = listener.accept().unwrap();
+            socket
+                .set_read_timeout(Some(Duration::from_secs(10)))
+                .unwrap();
             read_http_request(&mut socket);
             write!(
                 socket,
@@ -53,6 +47,7 @@ fn diff_and_search_compare_tapes_and_reject_corrupted_vectors() {
             )
             .unwrap();
         }
+        served.send(()).unwrap();
     });
 
     // Helper: record a real session that connects through $HTTP_PROXY to `server_addr`.
@@ -62,9 +57,10 @@ fn diff_and_search_compare_tapes_and_reject_corrupted_vectors() {
                 "powershell".to_string(),
                 "-NoLogo".to_string(),
                 "-NoProfile".to_string(),
+                "-NonInteractive".to_string(),
                 "-Command".to_string(),
                 format!(
-                    "Write-Output '{msg}'; Invoke-WebRequest -Uri 'http://{server_addr}/api/health' -Proxy $env:HTTP_PROXY -SkipHttpErrorCheck | Out-Null; exit {exit_code}"
+                    "Write-Output '{msg}'; curl.exe --max-time 10 --noproxy 'unused.invalid' -sS -x $env:HTTP_PROXY -o NUL 'http://{server_addr}/api/health'; if ($LASTEXITCODE -ne 0) {{ exit $LASTEXITCODE }}; exit {exit_code}"
                 ),
             ]
         } else {
@@ -72,7 +68,7 @@ fn diff_and_search_compare_tapes_and_reject_corrupted_vectors() {
                 "sh".to_string(),
                 "-c".to_string(),
                 format!(
-                    "echo '{msg}' && curl --noproxy '' -sS -x \"$HTTP_PROXY\" -o /dev/null http://{server_addr}/api/health && exit {exit_code}"
+                    "echo '{msg}' && curl --max-time 10 --noproxy '' -sS -x \"$HTTP_PROXY\" -o /dev/null http://{server_addr}/api/health && exit {exit_code}"
                 ),
             ]
         };
@@ -105,6 +101,9 @@ fn diff_and_search_compare_tapes_and_reject_corrupted_vectors() {
     let out_b = record_session(&tape_b, "BUILD_BETA_FAIL_503", 7);
     assert_eq!(out_b.status.code(), Some(7));
 
+    responses
+        .recv_timeout(Duration::from_secs(15))
+        .expect("both recorded sessions must reach the upstream server");
     server_thread.join().unwrap();
 
     // 1. Verify `devtape diff` human output and `--json` output.
@@ -205,5 +204,4 @@ fn diff_and_search_compare_tapes_and_reject_corrupted_vectors() {
         !bad_search.status.success(),
         "expected devtape search to reject tampered .tape conformance vector"
     );
-    let _ = send_http_via_proxy;
 }
