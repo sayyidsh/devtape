@@ -26,6 +26,32 @@ jobs:
       - name: Exercise the action's report and failure propagation
         run: node --test scripts/action/report.test.mjs
 
+  performance:
+    name: Release size and benchmarks
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - name: Enforce the stripped CLI size budget
+        run: |
+          cargo build --locked --release -p devtape-cli
+          node scripts/check-release-size.mjs target/release/devtape
+      - name: Measure codec and scrubber performance
+        shell: bash
+        run: |
+          {
+            echo '### DevTape microbenchmarks'
+            echo
+            echo '~~~text'
+            cargo bench --locked -p dtp-codec --bench codec_bench
+            cargo bench --locked -p devtape-scrub --bench scrub_bench
+            echo '~~~'
+          } | tee -a "$GITHUB_STEP_SUMMARY"
+
   browser-decoder:
     runs-on: ubuntu-latest
     steps:

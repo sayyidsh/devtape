@@ -58,32 +58,27 @@ jobs:
         run: cargo test --workspace --target ${{ matrix.target }}
 
       - name: Build stripped release binary
-        run: cargo build --release -p devtape-cli --target ${{ matrix.target }}
+        run: cargo build --locked --release -p devtape-cli --target ${{ matrix.target }}
 
-      - name: Enforce < 15 MB release binary budget (Unix)
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+
+      - name: Enforce the stripped CLI size budget
+        run: node scripts/check-release-size.mjs "target/${{ matrix.target }}/release/${{ matrix.bin }}"
+
+      - name: Package release binary (Unix)
         if: runner.os != 'Windows'
         shell: bash
         run: |
-          BIN="target/${{ matrix.target }}/release/${{ matrix.bin }}"
-          SIZE=$(wc -c < "$BIN" | tr -d ' ')
-          echo "Release binary size: ${SIZE} bytes"
-          if [ "$SIZE" -ge 15728640 ]; then
-            echo "Error: release binary exceeds 15 MiB budget (${SIZE} bytes)"
-            exit 1
-          fi
           tar -czf "${{ matrix.asset }}" -C "target/${{ matrix.target }}/release" "${{ matrix.bin }}"
           shasum -a 256 "${{ matrix.asset }}" > "${{ matrix.asset }}.sha256"
 
-      - name: Enforce < 15 MB release binary budget (Windows)
+      - name: Package release binary (Windows)
         if: runner.os == 'Windows'
         shell: pwsh
         run: |
           $bin = "target/${{ matrix.target }}/release/${{ matrix.bin }}"
-          $size = (Get-Item $bin).Length
-          Write-Host "Release binary size: $size bytes"
-          if ($size -ge 15728640) {
-            throw "Release binary exceeds 15 MiB budget ($size bytes)"
-          }
           Compress-Archive -Path $bin -DestinationPath "${{ matrix.asset }}"
           $hash = (Get-FileHash "${{ matrix.asset }}" -Algorithm SHA256).Hash.ToLower()
           "$hash  ${{ matrix.asset }}" | Out-File -Encoding ascii "${{ matrix.asset }}.sha256"

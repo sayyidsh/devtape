@@ -37,14 +37,15 @@ CARGO_INCREMENTAL=0 cargo bench --workspace --no-run
 
 # 5. Build and verify the stripped release binary size (< 15 MB budget)
 CARGO_INCREMENTAL=0 cargo build --release -p devtape-cli
-ls -lh target/release/devtape
+node scripts/check-release-size.mjs target/release/devtape
 ```
 
 ### Conformance Vectors & Benchmarks
 
 - **Golden Conformance Vectors:** Located in `spec/conformance/` and validated by `crates/dtp-codec/tests/conformance_vectors.rs`. Any change to `dtp-codec` must preserve backward compatibility with all golden `.tape` vectors.
 - **Property Tests:** `crates/dtp-codec/tests/prop_codec.rs` and `crates/devtape-scrub/tests/prop_scrubber.rs` test arbitrary chunk splits, malformed headers, and truncated streams.
-- **Microbenchmarks:** Run `cargo bench -p dtp-codec` and `cargo bench -p devtape-scrub` to measure codec throughput and sliding-window redaction latency.
+- **Release size:** CI checks the uncompressed, stripped Linux executable on pull requests and pushes to `main`. Release builds apply the same strict 15,000,000-byte ceiling to all four platform binaries. Use `target/release/devtape.exe` for the local size check on Windows.
+- **Microbenchmarks:** Run `CARGO_INCREMENTAL=0 cargo bench --locked -p dtp-codec --bench codec_bench` and `CARGO_INCREMENTAL=0 cargo bench --locked -p devtape-scrub --bench scrub_bench`. CI records codec encode/decode time, ANSI sanitization time, fixture size, and scrubber throughput in the job summary. Timing measurements are informational on shared runners.
 
 ---
 

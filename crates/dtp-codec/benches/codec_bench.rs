@@ -1,5 +1,5 @@
 //! Micro-benchmark for `dtp-codec` encode, decode, and streaming ANSI replay sanitizer.
-//! Run with `cargo run --release --offline -p dtp-codec --example codec_bench`.
+//! Run with `CARGO_INCREMENTAL=0 cargo bench --locked -p dtp-codec --bench codec_bench`.
 
 use dtp_codec::{
     AnsiReplaySanitizer, CoreEvent, EventEnvelope, ExportProfile, HlcTimestamp, QosMode,

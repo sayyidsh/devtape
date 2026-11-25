@@ -1,4 +1,4 @@
-//! Run with `cargo run --release --offline -p devtape-scrub --example micro_bench`.
+//! Run with `CARGO_INCREMENTAL=0 cargo bench --locked -p devtape-scrub --bench scrub_bench`.
 use devtape_scrub::OverlapScrubber;
 use std::{hint::black_box, time::Instant};
 fn main() {
