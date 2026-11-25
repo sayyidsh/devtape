@@ -1,0 +1,14 @@
+[build-system]
+requires = ["maturin>=1,<2"]
+build-backend = "maturin"
+
+[project]
+name = "devtape-dtp"
+version = "0.3.0"
+requires-python = ">=3.9"
+description = "Python bindings for the DevTape Protocol codec and replay sanitizer"
+readme = "README.md"
+license = { text = "Apache-2.0" }
+
+[tool.maturin]
+module-name = "devtape_dtp"

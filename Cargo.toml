@@ -1,5 +1,6 @@
 [workspace]
 resolver = "2"
+exclude = ["bindings/python"]
 members = [
     "crates/dtp-codec",
     "crates/devtape-scrub",

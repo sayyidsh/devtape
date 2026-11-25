@@ -105,3 +105,11 @@ CARGO_INCREMENTAL=0 cargo test --workspace
 ## License
 
 Apache-2.0. The protocol specification in `spec/` is open and vendor-neutral.
+
+## SDKs & Language Bindings
+
+- **Rust (`dtp-codec`)**: use the workspace codec to decode and validate DTP archives.
+- **JavaScript / TypeScript (`@devtape/dtp-wasm`)**: initialize the WebAssembly decoder and call `decodeTape(bytes)`; see [the npm package guide](packages/dtp-wasm/README.md).
+- **Python (`devtape-dtp`)**: use `decode_tape_json` and `sanitize_ansi`; see [the Python binding guide](bindings/python/README.md).
+
+The SDK source is included here; package publication is a separate release step.

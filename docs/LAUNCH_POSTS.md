@@ -165,3 +165,21 @@ Key highlights of DevTape & DTP v0.1:
 
 The entire 10-crate Rust workspace enforces `#![forbid(unsafe_code)]`, passes 42 unit, property, conformance, and integration tests, and compiles into a single 3.94 MiB stripped binary.
 ```
+
+## 6. v0.3.0 Live Thread Updates (Show HN & X)
+
+These are drafts for the linked threads; package availability and deployed version should be verified before posting.
+
+### Show HN follow-up
+
+Thread: https://news.ycombinator.com/item?id=50628581
+
+> DevTape v0.3.0 update: install with `brew install sayyidsh/tap/devtape`. The 398 KB wasm32 browser decoder is at https://sayyidsh.github.io/devtape/; the `@devtape/dtp-wasm` npm package and `devtape-dtp` PyO3 bindings cover all 16 golden conformance vectors. A four-line GitHub Action using `sayyidsh/devtape@v0.3.0` captures `ext.ci.v1` and uploads scrubbed `.tape` artifacts on failure. Opt-in loopback HTTPS CONNECT MITM uses tokio-rustls and dynamic per-host certificates signed by an ephemeral rcgen session CA, including split-chunk secret redaction for chunked transfer encoding. Recording also streams live into SQLite WAL via RecordSink.
+
+### X follow-up
+
+Thread: https://x.com/sayyid_sh/status/2125227587144159273
+
+> DevTape v0.3.0: `brew install sayyidsh/tap/devtape`. 398 KB browser decoder: https://sayyidsh.github.io/devtape/ — npm `@devtape/dtp-wasm` + PyO3 `devtape-dtp`, checked against all 16 golden vectors.
+>
+> Four-line Action: `uses: sayyidsh/devtape@v0.3.0` captures `ext.ci.v1` and scrubbed failure tapes. Opt-in loopback HTTPS CONNECT MITM uses tokio-rustls + per-host certs signed by an ephemeral rcgen CA; chunked split secrets are redacted. RecordSink streams to SQLite WAL live.

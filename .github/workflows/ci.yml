@@ -46,6 +46,24 @@ jobs:
           printf '{"type":"module"}\n' > web/viewer/pkg/package.json
           cargo run --locked -p dtp-wasm --example browser_fixture -- target/browser-test.tape
           node scripts/test-wasm.mjs web/viewer/pkg/dtp_wasm.js
+          bash packages/dtp-wasm/build.sh
+          node packages/dtp-wasm/test.mjs
+          (cd packages/dtp-wasm && npm pack --dry-run)
+
+  python-sdk:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: python -m venv .venv
+      - run: .venv/bin/python -m pip install maturin pytest
+      - run: .venv/bin/maturin develop --manifest-path bindings/python/Cargo.toml
+        env:
+          VIRTUAL_ENV: ${{ github.workspace }}/.venv
+      - run: .venv/bin/pytest bindings/python/tests/test_conformance.py
 
   action-smoke:
     runs-on: ubuntu-latest
