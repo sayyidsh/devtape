@@ -6,6 +6,7 @@ on:
   workflow_dispatch:
 
 permissions:
+  actions: read
   contents: read
   pages: write
   id-token: write
@@ -20,6 +21,8 @@ jobs:
       name: github-pages
       url: ${{ steps.deployment.outputs.page_url }}
     runs-on: ubuntu-latest
+    env:
+      PAGES_ARTIFACT_NAME: github-pages-${{ github.run_attempt }}
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -57,10 +60,33 @@ jobs:
         uses: actions/configure-pages@v5
 
       - name: Upload web/viewer artifact
-        uses: actions/upload-pages-artifact@v3
+        id: upload
+        uses: actions/upload-pages-artifact@v4
         with:
+          name: ${{ env.PAGES_ARTIFACT_NAME }}
           path: "web/viewer"
+
+      - name: Wait for the uploaded artifact to appear in the run
+        timeout-minutes: 2
+        env:
+          GH_TOKEN: ${{ github.token }}
+          UPLOADED_ARTIFACT_ID: ${{ steps.upload.outputs.artifact_id }}
+        run: |
+          for attempt in {1..12}; do
+            if artifact_id=$(gh api --method GET \
+              "repos/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID/artifacts" \
+              -f "name=$PAGES_ARTIFACT_NAME" \
+              --jq 'if .total_count == 1 then .artifacts[0].id else empty end') &&
+              [[ -n "$artifact_id" && "$artifact_id" == "$UPLOADED_ARTIFACT_ID" ]]; then
+              exit 0
+            fi
+            sleep 5
+          done
+          echo "::error::Artifact $PAGES_ARTIFACT_NAME ($UPLOADED_ARTIFACT_ID) did not appear in the workflow run"
+          exit 1
 
       - name: Deploy to GitHub Pages
         id: deployment
         uses: actions/deploy-pages@v4
+        with:
+          artifact_name: ${{ env.PAGES_ARTIFACT_NAME }}
