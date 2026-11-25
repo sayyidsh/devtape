@@ -4,6 +4,12 @@ on:
   push:
     tags:
       - "v*"
+  workflow_dispatch:
+    inputs:
+      npm_version:
+        description: Existing GitHub release version to publish to npm, without the v prefix
+        required: true
+        type: string
 
 permissions:
   contents: write
@@ -14,6 +20,7 @@ env:
 jobs:
   build:
     name: Build (${{ matrix.target }})
+    if: github.event_name == 'push'
     runs-on: ${{ matrix.os }}
     timeout-minutes: 20
     strategy:
@@ -146,6 +153,10 @@ jobs:
   publish-npm:
     name: Publish devtape-dtp-wasm (npm)
     needs: [publish-release]
+    if: >-
+      ${{ !cancelled() &&
+          ((github.event_name == 'push' && needs.publish-release.result == 'success') ||
+           (github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main')) }}
     runs-on: ubuntu-latest
     permissions:
       id-token: write
@@ -164,6 +175,19 @@ jobs:
         with:
           node-version: "24"
           registry-url: "https://registry.npmjs.org"
+      - name: Check npm retry version
+        if: github.event_name == 'workflow_dispatch'
+        env:
+          EXPECTED_VERSION: ${{ inputs.npm_version }}
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          version=$(node -p 'require("./packages/dtp-wasm/package.json").version')
+          if [[ "$version" != "$EXPECTED_VERSION" ]]; then
+            echo "::error::The checked-out npm package version does not match the requested retry version."
+            exit 1
+          fi
+          gh release view "v$version" --repo "$GITHUB_REPOSITORY" --json tagName --jq .tagName
       - name: Build, test conformance, and dry-run pack devtape-dtp-wasm
         run: |
           bash packages/dtp-wasm/build.sh

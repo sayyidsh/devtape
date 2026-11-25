@@ -1,6 +1,11 @@
 {
   "name": "devtape-dtp-wasm", "version": "0.4.5",
   "description": "WebAssembly DTP v0.1 .tape decoder and incremental ANSI replay sanitizer",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/sayyidsh/devtape.git",
+    "directory": "packages/dtp-wasm"
+  },
   "license": "Apache-2.0", "type": "module", "main": "./index.mjs", "types": "./index.d.ts",
   "exports": { ".": { "types": "./index.d.ts", "default": "./index.mjs" } },
   "publishConfig": { "access": "public" },
