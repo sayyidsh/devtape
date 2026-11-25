@@ -15,7 +15,7 @@ fn live_ps_and_tail_stream_output_before_exit_and_strip_split_osc52() {
     let pad_b = "trailing ".repeat(25);
     let script = if cfg!(windows) {
         format!(
-            "powershell -NoLogo -NoProfile -Command \"[Console]::Out.Write('phase1 ' + [char]27 + ']52;c;{osc_part1}'); [Console]::Out.Flush(); Start-Sleep -Milliseconds 600; [Console]::Out.Write('c2VjcmV0' + [char]7 + 'phase2' + [char]10 + '{pad_b}' + [char]10); [Console]::Out.Flush(); Start-Sleep -Seconds 3\""
+            "[Console]::Out.Write('phase1 ' + [char]27 + ']52;c;{osc_part1}'); [Console]::Out.Flush(); Start-Sleep -Milliseconds 600; [Console]::Out.Write('c2VjcmV0' + [char]7 + 'phase2' + [char]10 + '{pad_b}' + [char]10); [Console]::Out.Flush(); Start-Sleep -Seconds 3"
         )
     } else {
         format!(
@@ -32,7 +32,18 @@ fn live_ps_and_tail_stream_output_before_exit_and_strip_split_osc52() {
         "--".to_string(),
     ];
     if cfg!(windows) {
-        cmd_args.extend(["cmd.exe".into(), "/C".into(), script]);
+        std::fs::write(dir.path().join("child.ps1"), script).unwrap();
+        cmd_args.extend(
+            [
+                "powershell",
+                "-NoLogo",
+                "-NoProfile",
+                "-NonInteractive",
+                "-File",
+                "child.ps1",
+            ]
+            .map(String::from),
+        );
     } else {
         cmd_args.extend(["sh".into(), "-c".into(), script]);
     }
