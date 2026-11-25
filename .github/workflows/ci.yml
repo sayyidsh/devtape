@@ -40,7 +40,7 @@ jobs:
         run: |
           cargo build --locked --release -p devtape-cli
           node scripts/check-release-size.mjs target/release/devtape
-      - name: Measure codec and scrubber performance
+      - name: Measure codec, scrubber, and interactive PTY performance
         shell: bash
         run: |
           {
@@ -49,6 +49,7 @@ jobs:
             echo '~~~text'
             cargo bench --locked -p dtp-codec --bench codec_bench
             cargo bench --locked -p devtape-scrub --bench scrub_bench
+            python3 scripts/bench-pty.py target/release/devtape
             echo '~~~'
           } | tee -a "$GITHUB_STEP_SUMMARY"
 

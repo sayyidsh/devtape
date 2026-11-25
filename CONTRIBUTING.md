@@ -46,6 +46,7 @@ node scripts/check-release-size.mjs target/release/devtape
 - **Property Tests:** `crates/dtp-codec/tests/prop_codec.rs` and `crates/devtape-scrub/tests/prop_scrubber.rs` test arbitrary chunk splits, malformed headers, and truncated streams.
 - **Release size:** CI checks the uncompressed, stripped Linux executable on pull requests and pushes to `main`. Release builds apply the same strict 15,000,000-byte ceiling to all four platform binaries. Use `target/release/devtape.exe` for the local size check on Windows.
 - **Microbenchmarks:** Run `CARGO_INCREMENTAL=0 cargo bench --locked -p dtp-codec --bench codec_bench` and `CARGO_INCREMENTAL=0 cargo bench --locked -p devtape-scrub --bench scrub_bench`. CI records codec encode/decode time, ANSI sanitization time, fixture size, and scrubber throughput in the job summary. Timing measurements are informational on shared runners.
+- **Interactive PTY latency:** After building the stripped CLI, run `python3 scripts/bench-pty.py target/release/devtape` on Linux or macOS. It compares a direct PTY against the same shell responder under `devtape record` with SQLite enabled. Both paths report p50, p95, and p99 after warmup. Added latency is recorded p95 minus direct p95. CI reports the measurements. Pass `--enforce-budget` on a controlled machine to require less than 2 ms added p95 latency.
 
 ---
 
