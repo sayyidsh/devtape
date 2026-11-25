@@ -567,7 +567,7 @@ impl SessionStore {
                 r.get(0)
             })
             .optional()?;
-        let mut manifest: TapeManifest =
+        let manifest: TapeManifest =
             serde_json::from_str(&raw.ok_or_else(|| CoreError::NotFound(id.into()))?)?;
         let mut statement = conn.prepare("SELECT event FROM events WHERE session_id=?1")?;
         let mut rows = statement.query([id])?;
@@ -577,157 +577,167 @@ impl SessionStore {
                 &row.get::<_, String>(0)?,
             )?);
         }
-        events.sort_by_key(|e| (e.hlc, e.seq));
-        let stored = events.len();
-        let mut streams = 0;
-        let mut snapshots = 0;
-        events.retain(|e| {
-            let keep = match (&profile, &e.event) {
-                (ExportProfile::Full, _) => true,
-                (
-                    ExportProfile::DiffOnly,
-                    CoreEvent::SessionStart { .. }
-                    | CoreEvent::SpanStart { .. }
-                    | CoreEvent::SpanEnd { .. }
-                    | CoreEvent::SessionEnd { .. }
-                    | CoreEvent::StateSnapshot { .. },
-                ) => true,
-                (ExportProfile::DiffOnly, CoreEvent::Extension { extension_id, .. }) => {
-                    extension_id == "ext.git.v1" || extension_id == "ext.ci.v1"
-                }
-                (
-                    ExportProfile::TraceOnly,
-                    CoreEvent::SessionStart { .. }
-                    | CoreEvent::SpanStart { .. }
-                    | CoreEvent::SpanEnd { .. }
-                    | CoreEvent::SessionEnd { .. }
-                    | CoreEvent::DropMarker { .. },
-                ) => true,
-                _ => false,
-            };
-            if !keep {
-                if matches!(e.event, CoreEvent::StreamChunk { .. }) {
-                    streams += 1;
-                }
-                if matches!(e.event, CoreEvent::StateSnapshot { .. }) {
-                    snapshots += 1;
-                }
-            }
-            keep
-        });
-        let mut scrubber = Scrubber::new();
-        // Reassemble each channel before scrubbing so secrets split across events are detected.
-        for channel in [
-            StreamChannel::Stdin,
-            StreamChannel::Stdout,
-            StreamChannel::Stderr,
-        ] {
-            let mut joined = String::new();
-            let mut indices = Vec::new();
-            for (i, e) in events.iter().enumerate() {
-                if let CoreEvent::StreamChunk { channel: c, data } = &e.event {
-                    if *c == channel {
-                        joined.push_str(data);
-                        indices.push(i);
-                    }
-                }
-            }
-            if let Some((&last, rest)) = indices.split_last() {
-                let cleaned = scrubber.scrub_str(&joined);
-                if cleaned != joined {
-                    for i in rest {
-                        if let CoreEvent::StreamChunk { data, .. } = &mut events[*i].event {
-                            data.clear();
-                        }
-                    }
-                    if let CoreEvent::StreamChunk { data, .. } = &mut events[last].event {
-                        *data = cleaned;
-                    }
-                }
-            }
-        }
-        for e in &mut events {
-            match &mut e.event {
-                CoreEvent::SessionStart {
-                    sanitized_cwd,
-                    env_fingerprint,
-                } => {
-                    *sanitized_cwd = scrubber.scrub_str(sanitized_cwd);
-                    *env_fingerprint = scrubber.scrub_str(env_fingerprint);
-                }
-                CoreEvent::SpanStart { kind, label } => {
-                    *kind = scrubber.scrub_str(kind);
-                    *label = scrubber.scrub_str(label);
-                }
-                CoreEvent::StateSnapshot {
-                    tree_blake3,
-                    changed_files,
-                } => {
-                    *tree_blake3 = scrubber.scrub_str(tree_blake3);
-                    for path in changed_files {
-                        *path = scrubber.scrub_str(path);
-                    }
-                }
-                CoreEvent::DropMarker { reason, .. } => *reason = scrubber.scrub_str(reason),
-                CoreEvent::Extension {
-                    extension_id,
-                    event_name,
-                    payload,
-                } => {
-                    *extension_id = scrubber.scrub_str(extension_id);
-                    *event_name = scrubber.scrub_str(event_name);
-                    scrub_json(payload, &mut scrubber);
-                }
-                _ => {}
-            }
-            e.span_id = scrubber.scrub_str(&e.span_id);
-            if let Some(p) = &mut e.parent_span_id {
-                *p = scrubber.scrub_str(p);
-            }
-        }
-        manifest.session_id = scrubber.scrub_str(&manifest.session_id);
-        manifest.spec_version = scrubber.scrub_str(&manifest.spec_version);
-        manifest.os = scrubber.scrub_str(&manifest.os);
-        manifest.arch = scrubber.scrub_str(&manifest.arch);
-        manifest.shell = scrubber.scrub_str(&manifest.shell);
-        for extension in &mut manifest.extensions {
-            *extension = scrubber.scrub_str(extension);
-        }
-        manifest.export_profile = profile;
-        manifest.redaction.local_map_excluded = true;
-        manifest.redaction.redacted_count = manifest
-            .redaction
-            .redacted_count
-            .saturating_add(scrubber.redacted_count());
-        manifest.redaction.ruleset_version = RULESET_VERSION.into();
-        if profile == ExportProfile::TraceOnly {
-            manifest.extensions.clear();
-        } else if profile == ExportProfile::DiffOnly {
-            manifest
-                .extensions
-                .retain(|e| e == "ext.git.v1" || e == "ext.ci.v1");
-        }
-        let len = events.len() as u64;
-        for (i, e) in events.iter_mut().enumerate() {
-            e.seq = i as u64 + 1;
-            if let CoreEvent::SessionEnd { total_events, .. } = &mut e.event {
-                *total_events = len;
-            }
-        }
-        let review = ExportReviewReport {
-            session_id: id.into(),
-            profile,
-            total_events_stored: stored,
-            exported_events_count: events.len(),
-            excluded_stream_chunks: streams,
-            excluded_snapshots: snapshots,
-            redacted_count: manifest.redaction.redacted_count,
-            ruleset_version: manifest.redaction.ruleset_version.clone(),
-            extensions: manifest.extensions.clone(),
-            local_map_excluded: true,
-        };
-        Ok((TapeArchive::new(manifest, events)?, review))
+        export_archive_with_profile(manifest, events, profile)
     }
+}
+
+/// Apply an export privacy profile and scrub an archive.
+pub fn export_archive_with_profile(
+    mut manifest: TapeManifest,
+    mut events: Vec<EventEnvelope>,
+    profile: ExportProfile,
+) -> Result<(TapeArchive, ExportReviewReport), CoreError> {
+    let id = manifest.session_id.clone();
+    events.sort_by_key(|e| (e.hlc, e.seq));
+    let stored = events.len();
+    let mut streams = 0;
+    let mut snapshots = 0;
+    events.retain(|e| {
+        let keep = match (&profile, &e.event) {
+            (ExportProfile::Full, _) => true,
+            (
+                ExportProfile::DiffOnly,
+                CoreEvent::SessionStart { .. }
+                | CoreEvent::SpanStart { .. }
+                | CoreEvent::SpanEnd { .. }
+                | CoreEvent::SessionEnd { .. }
+                | CoreEvent::StateSnapshot { .. },
+            ) => true,
+            (ExportProfile::DiffOnly, CoreEvent::Extension { extension_id, .. }) => {
+                extension_id == "ext.git.v1" || extension_id == "ext.ci.v1"
+            }
+            (
+                ExportProfile::TraceOnly,
+                CoreEvent::SessionStart { .. }
+                | CoreEvent::SpanStart { .. }
+                | CoreEvent::SpanEnd { .. }
+                | CoreEvent::SessionEnd { .. }
+                | CoreEvent::DropMarker { .. },
+            ) => true,
+            _ => false,
+        };
+        if !keep {
+            if matches!(e.event, CoreEvent::StreamChunk { .. }) {
+                streams += 1;
+            }
+            if matches!(e.event, CoreEvent::StateSnapshot { .. }) {
+                snapshots += 1;
+            }
+        }
+        keep
+    });
+    let mut scrubber = Scrubber::new();
+    // Reassemble each channel before scrubbing so secrets split across events are detected.
+    for channel in [
+        StreamChannel::Stdin,
+        StreamChannel::Stdout,
+        StreamChannel::Stderr,
+    ] {
+        let mut joined = String::new();
+        let mut indices = Vec::new();
+        for (i, e) in events.iter().enumerate() {
+            if let CoreEvent::StreamChunk { channel: c, data } = &e.event {
+                if *c == channel {
+                    joined.push_str(data);
+                    indices.push(i);
+                }
+            }
+        }
+        if let Some((&last, rest)) = indices.split_last() {
+            let cleaned = scrubber.scrub_str(&joined);
+            if cleaned != joined {
+                for i in rest {
+                    if let CoreEvent::StreamChunk { data, .. } = &mut events[*i].event {
+                        data.clear();
+                    }
+                }
+                if let CoreEvent::StreamChunk { data, .. } = &mut events[last].event {
+                    *data = cleaned;
+                }
+            }
+        }
+    }
+    for e in &mut events {
+        match &mut e.event {
+            CoreEvent::SessionStart {
+                sanitized_cwd,
+                env_fingerprint,
+            } => {
+                *sanitized_cwd = scrubber.scrub_str(sanitized_cwd);
+                *env_fingerprint = scrubber.scrub_str(env_fingerprint);
+            }
+            CoreEvent::SpanStart { kind, label } => {
+                *kind = scrubber.scrub_str(kind);
+                *label = scrubber.scrub_str(label);
+            }
+            CoreEvent::StateSnapshot {
+                tree_blake3,
+                changed_files,
+            } => {
+                *tree_blake3 = scrubber.scrub_str(tree_blake3);
+                for path in changed_files {
+                    *path = scrubber.scrub_str(path);
+                }
+            }
+            CoreEvent::DropMarker { reason, .. } => *reason = scrubber.scrub_str(reason),
+            CoreEvent::Extension {
+                extension_id,
+                event_name,
+                payload,
+            } => {
+                *extension_id = scrubber.scrub_str(extension_id);
+                *event_name = scrubber.scrub_str(event_name);
+                scrub_json(payload, &mut scrubber);
+            }
+            _ => {}
+        }
+        e.span_id = scrubber.scrub_str(&e.span_id);
+        if let Some(p) = &mut e.parent_span_id {
+            *p = scrubber.scrub_str(p);
+        }
+    }
+    manifest.session_id = scrubber.scrub_str(&manifest.session_id);
+    manifest.spec_version = scrubber.scrub_str(&manifest.spec_version);
+    manifest.os = scrubber.scrub_str(&manifest.os);
+    manifest.arch = scrubber.scrub_str(&manifest.arch);
+    manifest.shell = scrubber.scrub_str(&manifest.shell);
+    for extension in &mut manifest.extensions {
+        *extension = scrubber.scrub_str(extension);
+    }
+    manifest.export_profile = profile;
+    manifest.redaction.local_map_excluded = true;
+    manifest.redaction.redacted_count = manifest
+        .redaction
+        .redacted_count
+        .saturating_add(scrubber.redacted_count());
+    manifest.redaction.ruleset_version = RULESET_VERSION.into();
+    if profile == ExportProfile::TraceOnly {
+        manifest.extensions.clear();
+    } else if profile == ExportProfile::DiffOnly {
+        manifest
+            .extensions
+            .retain(|e| e == "ext.git.v1" || e == "ext.ci.v1");
+    }
+    let len = events.len() as u64;
+    for (i, e) in events.iter_mut().enumerate() {
+        e.seq = i as u64 + 1;
+        if let CoreEvent::SessionEnd { total_events, .. } = &mut e.event {
+            *total_events = len;
+        }
+    }
+    let review = ExportReviewReport {
+        session_id: id,
+        profile,
+        total_events_stored: stored,
+        exported_events_count: events.len(),
+        excluded_stream_chunks: streams,
+        excluded_snapshots: snapshots,
+        redacted_count: manifest.redaction.redacted_count,
+        ruleset_version: manifest.redaction.ruleset_version.clone(),
+        extensions: manifest.extensions.clone(),
+        local_map_excluded: true,
+    };
+    Ok((TapeArchive::new(manifest, events)?, review))
 }
 use rusqlite::OptionalExtension;
 fn scrub_json(v: &mut serde_json::Value, s: &mut Scrubber) {

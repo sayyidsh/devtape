@@ -12,16 +12,16 @@
 <section id="dropzone"><p>Drop a .tape or JSON archive here, choose a file, or try the interactive demo session.</p><div class="actions"><input id="file" type="file" accept=".tape,.json,application/json"><button id="sample" type="button">Load Sample Failing Tape</button></div></section>
 <p id="message" role="status"></p>
 <section><h2>Manifest &amp; Redaction Attestation</h2><pre id="manifest">Open a recording to begin.</pre></section>
-<section><h2>Timeline</h2><div class="filters" id="filters">
+<section><div class="filters" id="tabs" role="tablist"><button type="button" aria-pressed="true">Timeline</button><button type="button" aria-pressed="false">HTTP</button><button type="button" aria-pressed="false">Git</button><button type="button" aria-pressed="false">CI</button></div><input class="search" id="search" type="search" placeholder="Search events and streams" aria-label="Search events and streams"><span id="search-count">0 matches</span> <button id="search-clear" type="button">Clear</button> <button id="search-next" type="button">Next match</button><div id="timeline-controls"><h2>Timeline</h2><div class="filters" id="filters">
 <button type="button" aria-pressed="true">All</button><button type="button" aria-pressed="false">Failures</button><button type="button" aria-pressed="false">Stdout</button><button type="button" aria-pressed="false">Stdin</button><button type="button" aria-pressed="false">Git</button><button type="button" aria-pressed="false">HTTP</button><button type="button" aria-pressed="false">DropMarkers</button>
-</div><input class="search" id="search" type="search" placeholder="Search events and streams" aria-label="Search events and streams"><label for="timeline">Show events through <span id="position">0</span></label><input id="timeline" type="range" min="0" max="0" value="0"><div id="events"></div></section>
-</main><script>
+</div><label for="timeline">Show events through <span id="position">0</span></label><input id="timeline" type="range" min="0" max="0" value="0"></div><div id="events"></div></section>
+</main><script id="devtape-embedded-tape" type="application/json"></script><script>
 'use strict';
 const byId = id => document.getElementById(id);
-let archive = null, active = 'All';
+let archive = null, active = 'All', tab = 'Timeline', matchIndex = -1;
 // Pages builds this module from the Rust decoder. Loading begins immediately;
 // file selection awaits the same promise, so an early drop cannot race startup.
-const decoderReady = (location.protocol === 'http:' || location.protocol === 'https:')
+const decoderReady = (!byId('devtape-embedded-tape')?.textContent.trim() && (location.protocol === 'http:' || location.protocol === 'https:'))
   ? import('./pkg/dtp_wasm.js').then(async module => {
       await module.default();
       return module.decode_and_sanitize_tape_json;
@@ -83,15 +83,29 @@ function matches(item) {
  }
 }
 function render() {
- const root=byId('events'); root.replaceChildren(); if (!archive) return;
- const max=Number(byId('timeline').value), query=byId('search').value.toLocaleLowerCase(); byId('position').textContent=String(max);
- for (const item of archive.events.slice(0,max)) {
-  const text=JSON.stringify(item,null,2); if (!matches(item) || !text.toLocaleLowerCase().includes(query)) continue;
-  const article=document.createElement('article'), pre=document.createElement('pre'); pre.textContent=text; article.appendChild(pre); root.appendChild(article);
+ const root=byId('events'); root.replaceChildren();
+ byId('timeline-controls').hidden = tab !== 'Timeline';
+ const max=Number(byId('timeline').value), query=byId('search').value.toLocaleLowerCase();
+ byId('position').textContent=String(max);
+ const items=archive ? (tab === 'Timeline' ? archive.events.slice(0,max).filter(matches) : archive.events.filter(item => {
+  const e=item.event || {};
+  return tab === 'HTTP' ? e.extension_id === 'ext.http.v1' && e.event_name === 'http_exchange' :
+   tab === 'Git' ? e.type === 'state_snapshot' || e.extension_id === 'ext.git.v1' :
+   e.extension_id === 'ext.ci.v1' && e.event_name === 'ci_context';
+ })) : [];
+ let count=0;
+ for (const item of items) {
+  const e=item.event || {}, data=tab === 'Timeline' ? item : {seq:item.seq, type:e.type, event_name:e.event_name, ...(e.payload || {}), ...(e.type === 'state_snapshot' ? e : {})};
+  const text=JSON.stringify(data,null,2); if (!text.toLocaleLowerCase().includes(query)) continue;
+  const article=document.createElement('article'), pre=document.createElement('pre'); pre.textContent=text; article.appendChild(pre); root.appendChild(article); count++;
  }
+ byId('search-count').textContent=`${query ? count : 0} matches`; matchIndex=-1;
 }
 for (const button of byId('filters').querySelectorAll('button')) button.addEventListener('click',()=>{active=button.textContent;for(const b of byId('filters').querySelectorAll('button')) b.setAttribute('aria-pressed',String(b===button));render();});
+for (const button of byId('tabs').querySelectorAll('button')) button.addEventListener('click',()=>{tab=button.textContent;for(const b of byId('tabs').querySelectorAll('button')) b.setAttribute('aria-pressed',String(b===button));render();});
 byId('search').addEventListener('input',render); byId('timeline').addEventListener('input',render);
+byId('search-clear').addEventListener('click',()=>{byId('search').value='';render();byId('search').focus();});
+byId('search-next').addEventListener('click',()=>{const items=byId('events').querySelectorAll('article');if (!byId('search').value || !items.length) return;matchIndex=(matchIndex+1)%items.length;items[matchIndex].scrollIntoView({block:'center'});});
 byId('sample').addEventListener('click',()=>present(SAMPLE_TAPE, 'sample'));
 async function openFile(file) {
  try {
@@ -108,5 +122,7 @@ byId('file').addEventListener('change',e=>openFile(e.target.files[0]));
 const drop=byId('dropzone'); for(const name of ['dragenter','dragover']) drop.addEventListener(name,e=>{e.preventDefault();drop.classList.add('active');});
 for(const name of ['dragleave','drop']) drop.addEventListener(name,e=>{e.preventDefault();drop.classList.remove('active');});
 drop.addEventListener('drop',e=>openFile(e.dataTransfer.files[0]));
-if(location.protocol==='http:' || location.protocol==='https:') fetch('/api/tape').then(r=>{if(!r.ok)throw new Error('No tape loaded');return r.json();}).then(data => present(data, 'verified')).catch(()=>{});
+const embedded=byId('devtape-embedded-tape')?.textContent.trim();
+if (embedded) { try { present(JSON.parse(embedded), 'verified'); } catch(e) { showError(e.message || e); } }
+else if(location.protocol==='http:' || location.protocol==='https:') fetch('/api/tape').then(r=>{if(!r.ok)throw new Error('No tape loaded');return r.json();}).then(data => present(data, 'verified')).catch(()=>{});
 </script></body></html>

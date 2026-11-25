@@ -115,6 +115,8 @@ enum Commands {
         session_id: String,
         #[arg(long, default_value = "full")]
         profile: String,
+        #[arg(long, default_value = "tape")]
+        format: String,
         #[arg(long)]
         review: bool,
         #[arg(long)]
@@ -712,6 +714,7 @@ async fn main() -> Result<std::process::ExitCode, Box<dyn std::error::Error>> {
         Commands::Export {
             session_id,
             profile,
+            format,
             review,
             db,
             out,
@@ -722,13 +725,30 @@ async fn main() -> Result<std::process::ExitCode, Box<dyn std::error::Error>> {
                 "trace-only" | "trace_only" => ExportProfile::TraceOnly,
                 _ => return Err(format!("unknown profile: {profile}").into()),
             };
-            let store = open_store(db)?;
-            let (archive, report) = store.export_session(&session_id, profile)?;
+            if format != "tape" && format != "html" {
+                return Err(format!("unknown format: {format}").into());
+            }
+            let (archive, report) = if Path::new(&session_id).is_file() {
+                let archive = TapeArchive::decode(&fs::read(&session_id)?)?;
+                devtape_core::export_archive_with_profile(
+                    archive.manifest,
+                    archive.events,
+                    profile,
+                )?
+            } else {
+                let store = open_store(db)?;
+                let result = store.export_session(&session_id, profile)?;
+                store.close()?;
+                result
+            };
             if review {
                 eprintln!("{}", serde_json::to_string_pretty(&report)?);
             }
-            fs::write(out, archive.encode()?)?;
-            store.close()?;
+            if format == "html" {
+                fs::write(out, devtape_ui::render_standalone_html(archive)?)?;
+            } else {
+                fs::write(out, archive.encode()?)?;
+            }
         }
         Commands::Snapshot { repo, label } => println!(
             "{}",
