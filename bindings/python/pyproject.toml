@@ -4,7 +4,7 @@ build-backend = "maturin"
 
 [project]
 name = "devtape-dtp"
-version = "0.4.5"
+version = "0.4.6"
 requires-python = ">=3.9"
 description = "Python bindings for the DevTape Protocol codec and replay sanitizer"
 readme = "README.md"

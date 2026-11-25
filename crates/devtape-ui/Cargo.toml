@@ -11,7 +11,7 @@ keywords.workspace = true
 categories.workspace = true
 
 [dependencies]
-dtp-codec = { version = "0.4.5", path = "../dtp-codec" }
-dtp-wasm = { version = "0.4.5", path = "../dtp-wasm" }
+dtp-codec = { version = "0.4.6", path = "../dtp-codec" }
+dtp-wasm = { version = "0.4.6", path = "../dtp-wasm" }
 serde_json.workspace = true
 tokio.workspace = true

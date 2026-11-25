@@ -1,5 +1,5 @@
 {
-  "name": "devtape-dtp-wasm", "version": "0.4.5",
+  "name": "devtape-dtp-wasm", "version": "0.4.6",
   "description": "WebAssembly DTP v0.1 .tape decoder and incremental ANSI replay sanitizer",
   "repository": {
     "type": "git",
