@@ -29,7 +29,8 @@ impl Scrubber {
             ("AWS_KEY", r"\bAKIA[0-9A-Z]{16}\b"),
             (
                 "GITHUB_TOKEN",
-                r"\b(?:ghp|gho|ghu|ghs|ghr)_[A-Za-z0-9]{20,}\b",
+                // A terminal escape can end in a letter immediately before a token.
+                r"(?:ghp|gho|ghu|ghs|ghr)_[A-Za-z0-9]{20,}",
             ),
             ("API_KEY", r"\bsk-(?:proj-)?[A-Za-z0-9_\-]{20,}\b"),
             ("BEARER", r"(?i)\bBearer\s+[A-Za-z0-9\-._~+/]+=*\b"),
@@ -167,6 +168,18 @@ mod tests {
         assert!(!out.contains("sk-proj-123456"));
         assert!(out.contains("<DTP:REDACTED:API_KEY:"));
         assert_eq!(s.redacted_count(), 1);
+    }
+
+    #[test]
+    fn catches_github_token_after_terminal_escape() {
+        let mut scrubber = OverlapScrubber::new();
+        let mut output = scrubber.push_chunk("\x1b[?25hghp_ABCD1234");
+        output.push_str(&scrubber.push_chunk("EFGH5678IJKL9012\r\n"));
+        output.push_str(&scrubber.finish());
+
+        assert!(output.starts_with("\x1b[?25h<DTP:REDACTED:GITHUB_TOKEN:"));
+        assert!(!output.contains("ghp_"));
+        assert_eq!(scrubber.redacted_count(), 1);
     }
 
     #[test]
