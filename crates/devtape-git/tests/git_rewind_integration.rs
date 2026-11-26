@@ -142,3 +142,101 @@ fn rewind_refuses_to_overwrite_ignored_collision() {
     assert!(GitSnapshotEngine::rewind(&r.0, Some(&s.snapshot_id)).is_err());
     assert_eq!(fs::read(r.0.join("later.txt")).unwrap(), b"ignored data");
 }
+
+#[test]
+fn undo_restores_raw_bytes_and_permissions_with_lossy_attributes() {
+    let r = repo();
+    fs::write(r.0.join(".gitattributes"), "*.dat text eol=lf ident\n").unwrap();
+    fs::write(r.0.join("preserved.dat"), b"snapshot bytes\n$Id$\n").unwrap();
+    run(&r.0, &["add", ".gitattributes", "preserved.dat"]);
+    run(&r.0, &["commit", "-qm", "add attributed fixture"]);
+    let target = GitSnapshotEngine::create_snapshot(&r.0, None).unwrap();
+
+    let exact = b"local bytes\r\n$Id: keep this spelling $\r\n";
+    fs::write(r.0.join("preserved.dat"), exact).unwrap();
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        fs::set_permissions(r.0.join("preserved.dat"), fs::Permissions::from_mode(0o600)).unwrap();
+    }
+
+    GitSnapshotEngine::rewind(&r.0, Some(&target.snapshot_id)).unwrap();
+    GitSnapshotEngine::undo_rewind(&r.0).unwrap();
+
+    assert_eq!(fs::read(r.0.join("preserved.dat")).unwrap(), exact);
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        assert_eq!(
+            fs::metadata(r.0.join("preserved.dat"))
+                .unwrap()
+                .permissions()
+                .mode()
+                & 0o7777,
+            0o600
+        );
+    }
+}
+
+#[cfg(unix)]
+#[test]
+fn undo_restores_symlink_type_and_target() {
+    use std::os::unix::fs::symlink;
+
+    let r = repo();
+    symlink("a.txt", r.0.join("working-link")).unwrap();
+    run(&r.0, &["add", "working-link"]);
+    run(&r.0, &["commit", "-qm", "add symlink fixture"]);
+    let target = GitSnapshotEngine::create_snapshot(&r.0, None).unwrap();
+
+    fs::remove_file(r.0.join("working-link")).unwrap();
+    symlink("b.txt", r.0.join("working-link")).unwrap();
+    GitSnapshotEngine::rewind(&r.0, Some(&target.snapshot_id)).unwrap();
+    GitSnapshotEngine::undo_rewind(&r.0).unwrap();
+
+    assert!(fs::symlink_metadata(r.0.join("working-link"))
+        .unwrap()
+        .file_type()
+        .is_symlink());
+    assert_eq!(
+        fs::read_link(r.0.join("working-link")).unwrap(),
+        Path::new("b.txt")
+    );
+}
+
+#[test]
+fn rewind_fails_before_mutation_when_raw_backup_storage_is_unavailable() {
+    let r = repo();
+    let target = GitSnapshotEngine::create_snapshot(&r.0, None).unwrap();
+    let modified = b"working bytes that must remain";
+    fs::write(r.0.join("a.txt"), modified).unwrap();
+    let backups = r.0.join(".git/devtape/raw-backups");
+    fs::write(&backups, b"not a directory").unwrap();
+
+    GitSnapshotEngine::create_snapshot(&r.0, Some("snapshot-only")).unwrap();
+    assert!(GitSnapshotEngine::rewind(&r.0, Some(&target.snapshot_id)).is_err());
+    assert_eq!(fs::read(r.0.join("a.txt")).unwrap(), modified);
+}
+
+#[test]
+fn undo_fails_before_mutation_when_raw_backup_is_corrupt() {
+    let r = repo();
+    let target = GitSnapshotEngine::create_snapshot(&r.0, None).unwrap();
+    fs::write(r.0.join("a.txt"), b"pre-rewind bytes").unwrap();
+    let outcome = GitSnapshotEngine::rewind(&r.0, Some(&target.snapshot_id)).unwrap();
+    let restored_target = fs::read(r.0.join("a.txt")).unwrap();
+    let objects =
+        r.0.join(".git/devtape/raw-backups")
+            .join(outcome.pre_rewind.snapshot_id)
+            .join("objects");
+    let object = fs::read_dir(objects)
+        .unwrap()
+        .next()
+        .unwrap()
+        .unwrap()
+        .path();
+    fs::write(object, b"corrupt").unwrap();
+
+    assert!(GitSnapshotEngine::undo_rewind(&r.0).is_err());
+    assert_eq!(fs::read(r.0.join("a.txt")).unwrap(), restored_target);
+}
