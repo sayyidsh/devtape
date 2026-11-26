@@ -261,6 +261,7 @@ version = "0.4.6"
 dependencies = [
  "blake3",
  "dtp-codec",
+ "libc",
  "serde",
  "serde_json",
  "thiserror 2.0.21",

@@ -45,6 +45,7 @@ If you discover a vulnerability in DevTape or the DTP v0.1 specification (such a
 - **Path Traversal & Rewind Guard (`dtp-codec` & `devtape-git`):**
   - Snapshot paths containing `..`, leading `/` or `\`, Windows drive letters (`C:`), or null bytes are rejected.
   - `devtape rewind` always creates an automatic `pre-rewind` safety snapshot (`devtape undo-rewind`), refuses to traverse symlinked parent directories, refuses to overwrite unmanaged files or directories, and operates via an isolated `GIT_INDEX_FILE`.
+  - Pre-rewind safety data stores no-follow raw working-tree bytes, file types, and supported permissions in a private manifest independent of Git clean/smudge attributes. Undo verifies the complete backup before mutation and fails closed if safety data is unavailable or corrupt.
 - **Terminal Escape Sanitization:** `AnsiReplaySanitizer` strips `OSC 52` clipboard-write sequences and window-title manipulation (`OSC 0`, `OSC 1`, `OSC 2`) across split chunks while preserving standard SGR colors.
 - **Read-Only Replay & Local UI Hardening:**
   - `devtape inspect`, `devtape view`, and `devtape mcp` are strictly read-only and never execute recorded shell commands.
