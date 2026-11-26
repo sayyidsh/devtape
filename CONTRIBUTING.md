@@ -53,6 +53,28 @@ node scripts/check-release-size.mjs target/release/devtape
 
 ---
 
+## Codec fuzzing
+
+Linux CI runs two AddressSanitizer fuzz smoke tests for 30 seconds each. The tape decoder uses the checked-in conformance vectors as seeds and calls the production decoder. The ANSI replay target checks that sanitizing a stream one character at a time gives the same result as sanitizing it in one call.
+
+With Rust nightly installed, run the same targets locally:
+
+```bash
+export CARGO_INCREMENTAL=0
+cargo +nightly install cargo-fuzz --version 0.13.2 --locked
+
+corpus=$(mktemp -d)
+mkdir -p "$corpus/tape" "$corpus/ansi"
+cp spec/conformance/*.tape "$corpus/tape/"
+printf '\033[32mBuild café completed\033[0m\n' > "$corpus/ansi/build-log"
+cargo +nightly fuzz run tape_decode "$corpus/tape" -- -max_total_time=30 -max_len=65536 -timeout=10
+cargo +nightly fuzz run ansi_replay "$corpus/ansi" -- -max_total_time=30 -max_len=16384 -timeout=10
+```
+
+For a longer campaign, increase `-max_total_time` and reuse the corpus directories. Generated files under `fuzz/artifacts` and `fuzz/corpus` are local.
+
+---
+
 ## Good First Issues & v0.2 Roadmap
 
 Looking for a place to start? Here are high-impact areas ready for contributions:

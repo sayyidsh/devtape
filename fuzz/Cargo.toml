@@ -1,0 +1,29 @@
+[package]
+name = "devtape-fuzz"
+version = "0.0.0"
+edition = "2021"
+publish = false
+
+[package.metadata]
+cargo-fuzz = true
+
+[dependencies]
+dtp-codec = { path = "../crates/dtp-codec" }
+libfuzzer-sys = "0.4"
+
+[workspace]
+members = ["."]
+
+[[bin]]
+name = "tape_decode"
+path = "fuzz_targets/tape_decode.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "ansi_replay"
+path = "fuzz_targets/ansi_replay.rs"
+test = false
+doc = false
+bench = false
