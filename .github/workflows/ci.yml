@@ -87,13 +87,7 @@ jobs:
       - name: Fuzz tape decoding and ANSI replay
         shell: bash
         run: |
-          cargo metadata --manifest-path fuzz/Cargo.toml --locked --format-version 1 --no-deps >/dev/null
-          corpus="$RUNNER_TEMP/devtape-fuzz-corpus"
-          mkdir -p "$corpus/tape" "$corpus/ansi"
-          cp spec/conformance/*.tape "$corpus/tape/"
-          printf '\033[32mBuild café completed\033[0m\n' > "$corpus/ansi/build-log"
-          cargo fuzz run tape_decode "$corpus/tape" -- -max_total_time=30 -max_len=65536 -timeout=10 -print_final_stats=1
-          cargo fuzz run ansi_replay "$corpus/ansi" -- -max_total_time=30 -max_len=16384 -timeout=10 -print_final_stats=1
+          bash scripts/run-codec-fuzz.sh
           git diff --exit-code -- fuzz/Cargo.lock
 
   browser-decoder:

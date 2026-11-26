@@ -1,0 +1,52 @@
+name: Codec Fuzz Campaign
+run-name: Codec Fuzz Campaign (${{ inputs.mode }})
+
+on:
+  workflow_dispatch:
+    inputs:
+      mode:
+        description: Validate workflow wiring or run the full 24-hour campaign
+        required: true
+        type: choice
+        default: verify
+        options:
+          - verify
+          - campaign
+
+permissions:
+  contents: read
+
+concurrency:
+  group: codec-fuzz-campaign-${{ inputs.mode }}
+  cancel-in-progress: false
+
+env:
+  CARGO_INCREMENTAL: "0"
+
+jobs:
+  fuzz:
+    name: Fuzz campaign segment ${{ matrix.segment }}
+    runs-on: ubuntu-latest
+    timeout-minutes: ${{ inputs.mode == 'campaign' && 300 || 15 }}
+    strategy:
+      fail-fast: true
+      max-parallel: 1
+      matrix:
+        segment: ${{ fromJSON(inputs.mode == 'campaign' && '[1,2,3,4,5,6]' || '[1]') }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: nightly-2026-11-26
+      - name: Install cargo-fuzz
+        run: cargo install cargo-fuzz --version 0.13.2 --locked
+      - name: Fuzz both codec targets
+        shell: bash
+        env:
+          SECONDS_PER_TARGET: ${{ inputs.mode == 'campaign' && 7200 || 30 }}
+          SEED: ${{ matrix.segment }}
+        run: |
+          bash scripts/run-codec-fuzz.sh "$SECONDS_PER_TARGET" "$SEED"
+          git diff --exit-code -- fuzz/Cargo.lock
+          printf 'Both targets passed with a %s-second run budget each, seed %s.\n' \
+            "$SECONDS_PER_TARGET" "$SEED" >> "$GITHUB_STEP_SUMMARY"

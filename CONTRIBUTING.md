@@ -63,15 +63,12 @@ With Rust nightly installed, run the same targets locally:
 export CARGO_INCREMENTAL=0
 cargo +nightly install cargo-fuzz --version 0.13.2 --locked
 
-corpus=$(mktemp -d)
-mkdir -p "$corpus/tape" "$corpus/ansi"
-cp spec/conformance/*.tape "$corpus/tape/"
-printf '\033[32mBuild café completed\033[0m\n' > "$corpus/ansi/build-log"
-cargo +nightly fuzz run tape_decode "$corpus/tape" -- -max_total_time=30 -max_len=65536 -timeout=10
-cargo +nightly fuzz run ansi_replay "$corpus/ansi" -- -max_total_time=30 -max_len=16384 -timeout=10
+RUSTUP_TOOLCHAIN=nightly bash scripts/run-codec-fuzz.sh
 ```
 
-For a longer campaign, increase `-max_total_time` and reuse the corpus directories. Generated files under `fuzz/artifacts` and `fuzz/corpus` are local.
+To run longer locally, pass the number of seconds per target and a positive seed to the script. It removes its temporary corpus when it exits. Generated files under `fuzz/artifacts` and `fuzz/corpus` are local.
+
+From GitHub Actions, run **Codec Fuzz Campaign** on the commit you want to validate. Mode `verify` runs both targets for 30 seconds each. Mode `campaign` runs six serial segments. Each segment starts from the checked-in corpus with a distinct seed and fuzzes both targets for two hours each. That gives 24 hours of fuzz execution in total, 12 per target, plus setup time. All six segments must pass before recording the campaign as complete.
 
 ---
 
