@@ -313,12 +313,14 @@ fn store_chunks(repo: &Repo, data: &[u8]) -> Result<(), GitError> {
             let compressed = zstd::stream::encode_all(chunk, 3)?;
             let temporary = repo.dir.join("cas").join(format!(".tmp-{}", unique()));
             let result = (|| -> Result<(), GitError> {
-                let mut file = fs::OpenOptions::new()
-                    .write(true)
-                    .create_new(true)
-                    .open(&temporary)?;
-                file.write_all(&compressed)?;
-                file.sync_all()?;
+                {
+                    let mut file = fs::OpenOptions::new()
+                        .write(true)
+                        .create_new(true)
+                        .open(&temporary)?;
+                    file.write_all(&compressed)?;
+                    file.sync_all()?;
+                }
                 fs::rename(&temporary, &path)?;
                 Ok(())
             })();
@@ -689,9 +691,11 @@ fn create_raw_backup(repo: &Repo, snapshot: &ShadowSnapshot) -> Result<(), GitEr
             platform: std::env::consts::OS.into(),
             entries,
         };
-        let mut file = open_private_new(&temporary.join("manifest.json"))?;
-        file.write_all(&serde_json::to_vec_pretty(&manifest)?)?;
-        file.sync_all()?;
+        {
+            let mut file = open_private_new(&temporary.join("manifest.json"))?;
+            file.write_all(&serde_json::to_vec_pretty(&manifest)?)?;
+            file.sync_all()?;
+        }
         fs::rename(&temporary, final_path)?;
         Ok(())
     })();
@@ -923,9 +927,11 @@ fn create_raw_parent(repo: &Repo, path: &str) -> Result<(), GitError> {
 }
 
 fn restore_regular_file(path: &Path, entry: &RawBackupEntry, data: &[u8]) -> Result<(), GitError> {
-    let mut file = open_private_new(path)?;
-    file.write_all(data)?;
-    file.sync_all()?;
+    {
+        let mut file = open_private_new(path)?;
+        file.write_all(data)?;
+        file.sync_all()?;
+    }
     #[cfg(unix)]
     {
         use std::os::unix::fs::PermissionsExt;
