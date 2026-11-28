@@ -505,12 +505,12 @@ fn same_metadata(before: &fs::Metadata, after: &fs::Metadata) -> bool {
     #[cfg(unix)]
     {
         use std::os::unix::fs::MetadataExt;
-        return before.dev() == after.dev()
+        before.dev() == after.dev()
             && before.ino() == after.ino()
             && before.mode() == after.mode()
             && before.len() == after.len()
             && before.mtime() == after.mtime()
-            && before.mtime_nsec() == after.mtime_nsec();
+            && before.mtime_nsec() == after.mtime_nsec()
     }
     #[cfg(not(unix))]
     {
@@ -526,14 +526,14 @@ fn os_string_bytes(value: OsString) -> Result<Vec<u8>, GitError> {
     #[cfg(unix)]
     {
         use std::os::unix::ffi::OsStringExt;
-        return Ok(value.into_vec());
+        Ok(value.into_vec())
     }
     #[cfg(windows)]
     {
-        return value
+        value
             .into_string()
             .map(String::into_bytes)
-            .map_err(|_| GitError::Unsafe("non-UTF-8 Windows symlink target".into()));
+            .map_err(|_| GitError::Unsafe("non-UTF-8 Windows symlink target".into()))
     }
     #[cfg(not(any(unix, windows)))]
     Err(GitError::Unsafe(
@@ -545,13 +545,13 @@ fn bytes_os_string(value: &[u8]) -> Result<OsString, GitError> {
     #[cfg(unix)]
     {
         use std::os::unix::ffi::OsStringExt;
-        return Ok(OsString::from_vec(value.to_vec()));
+        Ok(OsString::from_vec(value.to_vec()))
     }
     #[cfg(windows)]
     {
-        return String::from_utf8(value.to_vec())
+        String::from_utf8(value.to_vec())
             .map(OsString::from)
-            .map_err(|_| GitError::Unsafe("invalid Windows symlink target backup".into()));
+            .map_err(|_| GitError::Unsafe("invalid Windows symlink target backup".into()))
     }
     #[cfg(not(any(unix, windows)))]
     Err(GitError::Unsafe(
@@ -944,6 +944,9 @@ fn restore_regular_file(path: &Path, entry: &RawBackupEntry, data: &[u8]) -> Res
 }
 
 fn restore_symlink(path: &Path, entry: &RawBackupEntry, data: &[u8]) -> Result<(), GitError> {
+    if matches!(entry.kind, RawFileKind::Regular) {
+        return Err(GitError::Unsafe("invalid raw symlink type".into()));
+    }
     let target = PathBuf::from(bytes_os_string(data)?);
     #[cfg(unix)]
     {
@@ -953,7 +956,7 @@ fn restore_symlink(path: &Path, entry: &RawBackupEntry, data: &[u8]) -> Result<(
     match entry.kind {
         RawFileKind::SymlinkDirectory => std::os::windows::fs::symlink_dir(target, path)?,
         RawFileKind::Symlink => std::os::windows::fs::symlink_file(target, path)?,
-        RawFileKind::Regular => return Err(GitError::Unsafe("invalid raw symlink type".into())),
+        RawFileKind::Regular => unreachable!(),
     }
     #[cfg(not(any(unix, windows)))]
     return Err(GitError::Unsafe(
